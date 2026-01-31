@@ -118,6 +118,10 @@
                 window.location.reload();
             }
         }
+        window.addEventListener('firebase-ready', () => {
+            initRealtime();
+        });
+
     </script>
 
     <style>
