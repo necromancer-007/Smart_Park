@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Parking System</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Tesseract.js for OCR -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, getDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration (Injected by environment or default)
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // Make Firebase accessible globally for the existing app logic
+        window.db = db;
+        window.auth = auth;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.onSnapshot = onSnapshot;
+        window.appId = appId;
+        window.signInAnonymously = signInAnonymously;
+        
+        // Start Auth
+        signInAnonymously(auth).then(() => {
+            console.log("Connected to Realtime Server");
+        }).catch((error) => {
+            console.error("Auth Error", error);
+            showToast("Connection Failed", "error");
+        });
+    </script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Custom Animations */
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        .animate-slide-up { animation: slideIn 0.4s ease-out forwards; }
+        
+        /* Utilities */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .hidden { display: none !important; }
+
+        /* Maintenance Stripe Pattern */
+        .bg-maintenance {
+            background-color: #2a2a2a;
+            background-image: repeating-linear-gradient(
+                45deg,
+                #333,
+                #333 10px,
+                #fbbf24 10px,
+                #fbbf24 20px
+            );
+        }
+
+        video { transform: scaleX(-1); }
+        .slot-line { border-left: 2px dashed #64748b; border-right: 2px dashed #64748b; }
+        
+        /* Pulse for Live Indicator */
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+        }
+        .live-dot { animation: pulse-green 2s infinite; }
+    </style>
+</head>
+<body class="bg-slate-900 min-h-screen text-gray-100 selection:bg-yellow-500 selection:text-black pb-10 flex flex-col">
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed top-24 right-6 z-50 hidden animate-slide-up">
+        <div class="bg-gray-800 border border-gray-700 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3">
+            <div id="toast-icon-bg" class="rounded-full p-1">
+                <i data-lucide="circle-check" class="w-4 h-4 text-white"></i>
+            </div>
+            <p class="font-medium tracking-wide font-mono text-sm" id="toast-message">Message</p>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="bg-slate-900/90 backdrop-blur-md border-b border-gray-800 px-6 py-4 flex justify-between items-center sticky top-0 z-40 shadow-lg shadow-black/20">
+        <div class="flex items-center gap-3 cursor-pointer group" onclick="if(state.currentUser) switchView(state.view)">
+            <div class="bg-yellow-400 p-2 rounded-lg shadow-lg shadow-yellow-400/20 group-hover:bg-yellow-300 transition-colors">
+                <i data-lucide="square-parking" class="text-black w-6 h-6"></i>
+            </div>
+            <div class="flex flex-col">
+                <span class="font-black text-xl tracking-tight text-white uppercase italic leading-none">Smart<span class="text-yellow-400">Park</span></span>
+                <span id="connection-status" class="text-[10px] text-gray-500 font-mono flex items-center gap-1 mt-0.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span> Offline
+                </span>
+            </div>
+        </div>
+        
+        <!-- Auth Controls -->
+        <div id="auth-controls" class="hidden">
+            <div class="flex items-center gap-4">
+                <span id="user-display" class="text-xs font-mono text-gray-400 hidden sm:block">Logged in as: <span class="text-white font-bold" id="username-span">User</span></span>
+                <button onclick="logout()" class="px-4 py-2 rounded-lg text-xs font-bold bg-slate-800 text-red-400 border border-gray-700 hover:bg-red-900/20 hover:border-red-500/50 transition-all uppercase tracking-wider flex items-center gap-2">
+                    <i data-lucide="log-out" class="w-3 h-3"></i> Logout
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto p-6 flex-grow w-full">
+        
+        <!-- Login View (Default) -->
+        <div id="login-view" class="flex flex-col items-center justify-center min-h-[70vh] animate-slide-up">
+            <div class="bg-slate-800/50 p-8 rounded-3xl border border-gray-700 shadow-2xl w-full max-w-md relative overflow-hidden backdrop-blur-sm">
+                <!-- Decorative BG -->
+                <div class="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-transparent pointer-events-none"></div>
+                
+                <div class="text-center mb-8 relative z-10">
+                    <div class="bg-slate-900 w-16 h-16 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg border border-gray-700">
+                        <i data-lucide="shield-check" class="w-8 h-8 text-yellow-400"></i>
+                    </div>
+                    <h2 class="text-2xl font-black text-white uppercase tracking-wide">System Access</h2>
+                    <p class="text-gray-400 text-sm mt-1">Please authenticate to continue</p>
+                </div>
+
+                <div class="space-y-4 relative z-10">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">Username</label>
+                        <div class="relative">
+                            <i data-lucide="user" class="w-4 h-4 absolute left-3 top-3 text-gray-500"></i>
+                            <input type="text" id="login-user" class="w-full bg-slate-950 text-white pl-10 pr-4 py-3 rounded-xl border border-gray-700 focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 outline-none transition-all placeholder:text-gray-700" placeholder="Enter username">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">Password</label>
+                        <div class="relative">
+                            <i data-lucide="lock" class="w-4 h-4 absolute left-3 top-3 text-gray-500"></i>
+                            <input type="password" id="login-pass" class="w-full bg-slate-950 text-white pl-10 pr-4 py-3 rounded-xl border border-gray-700 focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 outline-none transition-all placeholder:text-gray-700" placeholder="••••••••">
+                        </div>
+                    </div>
+                    <button onclick="login()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3.5 rounded-xl uppercase tracking-wide transition-all mt-4 shadow-lg shadow-yellow-500/20 flex justify-center items-center gap-2">
+                        Login <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Credentials Hint (For Demo) -->
+                <div class="mt-8 pt-6 border-t border-gray-700/50 text-center">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-2">Default Credentials</p>
+                    <div class="flex justify-center gap-4 text-xs font-mono text-gray-400">
+                        <span class="bg-slate-900 px-2 py-1 rounded border border-gray-700">driver / 123</span>
+                        <span class="bg-slate-900 px-2 py-1 rounded border border-gray-700">admin / 123</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- User View -->
+        <div id="user-view" class="hidden space-y-8 animate-slide-up">
+            <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-800 pb-6 px-4 sm:px-0">
+                <div>
+                    <h2 class="text-3xl font-black text-white tracking-tight uppercase">Driver Portal</h2>
+                    <p class="text-gray-400 mt-1 text-sm font-mono">Zone A - Level 1</p>
+                </div>
+                <div class="flex gap-2 p-2 bg-slate-800 rounded-xl border border-gray-700">
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/50">
+                        <span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]"></span> 
+                        <span class="text-[10px] font-bold text-gray-300 uppercase">Free</span>
+                    </div>
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/50">
+                        <span class="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.6)]"></span> 
+                        <span class="text-[10px] font-bold text-gray-300 uppercase">Occupied</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="bg-slate-800/50 p-6 sm:p-8 rounded-3xl border border-gray-700 relative overflow-hidden">
+                <div class="absolute inset-0 opacity-5 pointer-events-none" style="background-image: url('https://www.transparenttextures.com/patterns/asphalt-dark.png');"></div>
+                <div id="user-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 sm:gap-6 w-full relative z-10"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-800 rounded-2xl p-6 flex items-center gap-4 border border-gray-700 shadow-lg">
+                    <div class="bg-blue-500/20 p-4 rounded-full text-blue-400">
+                        <i data-lucide="wallet" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-lg text-white">Digital Payment</h4>
+                        <p class="text-gray-400 text-xs font-mono">UPI / FASTag Supported</p>
+                    </div>
+                </div>
+                <div class="bg-slate-800 rounded-2xl p-6 flex items-center gap-4 border border-gray-700 shadow-lg">
+                    <div class="bg-yellow-500/20 p-4 rounded-full text-yellow-400">
+                        <i data-lucide="video" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-lg text-white">24/7 Surveillance</h4>
+                        <p class="text-gray-400 text-xs font-mono">AI-Powered Security</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin View -->
+        <div id="admin-view" class="hidden space-y-6 animate-slide-up">
+            <header class="flex flex-col sm:flex-row justify-between items-end border-b border-gray-800 pb-6 gap-4 px-4 sm:px-0">
+                <div class="w-full sm:w-auto">
+                    <h2 class="text-3xl font-black text-white tracking-tight uppercase">Command Center</h2>
+                    <p class="text-gray-400 mt-1 text-sm font-mono">Real-time Metrics & Controls</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="resetSystem()" class="bg-slate-800 border border-red-900/50 text-red-500 hover:text-red-400 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-900/20 transition-colors text-xs font-bold font-mono uppercase tracking-wider">
+                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset Data
+                    </button>
+                </div>
+            </header>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-slate-800 p-6 rounded-2xl border border-gray-700 shadow-lg flex items-center justify-between group hover:border-green-500/30 transition-colors">
+                    <div>
+                        <p class="text-gray-500 text-[10px] font-bold uppercase tracking-widest mb-1 font-mono">Revenue</p>
+                        <h3 id="admin-revenue" class="text-3xl font-black text-white font-mono">₹0</h3>
+                    </div>
+                    <div class="bg-green-500/10 p-3 rounded-xl text-green-500 group-hover:scale-110 transition-transform">
+                        <i data-lucide="indian-rupee" class="w-6 h-6"></i>
+                    </div>
+                </div>
+                <div class="bg-slate-800 p-6 rounded-2xl border border-gray-700 shadow-lg flex items-center justify-between group hover:border-blue-500/30 transition-colors">
+                    <div>
+                        <p class="text-gray-500 text-[10px] font-bold uppercase tracking-widest mb-1 font-mono">Capacity</p>
+                        <h3 id="admin-occupancy" class="text-3xl font-black text-white font-mono">0<span class="text-gray-600 text-lg">/12</span></h3>
+                    </div>
+                    <div class="bg-blue-500/10 p-3 rounded-xl text-blue-500 group-hover:scale-110 transition-transform">
+                        <i data-lucide="bar-chart-3" class="w-6 h-6"></i>
+                    </div>
+                </div>
+                <div class="bg-slate-800 p-6 rounded-2xl border border-gray-700 shadow-lg flex items-center justify-between group hover:border-yellow-500/30 transition-colors">
+                    <div>
+                        <p class="text-gray-500 text-[10px] font-bold uppercase tracking-widest mb-1 font-mono">Service</p>
+                        <h3 id="admin-maintenance" class="text-3xl font-black text-white font-mono">0</h3>
+                    </div>
+                    <div class="bg-yellow-500/10 p-3 rounded-xl text-yellow-500 group-hover:scale-110 transition-transform">
+                        <i data-lucide="cone" class="w-6 h-6"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 bg-slate-800 p-6 rounded-2xl border border-gray-700 shadow-lg">
+                    <h3 class="font-bold text-white mb-6 flex items-center gap-2 uppercase tracking-wide text-sm">
+                        <i data-lucide="grid" class="w-4 h-4 text-gray-500"></i> Floor Plan
+                    </h3>
+                    <div id="admin-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 w-full"></div>
+                </div>
+
+                <div class="bg-black p-1 rounded-2xl border border-gray-800 shadow-2xl flex flex-col h-[600px] overflow-hidden">
+                    <div class="bg-slate-900 px-4 py-3 rounded-t-xl flex justify-between items-center border-b border-gray-800">
+                        <h3 class="font-bold text-white flex items-center gap-2 text-xs uppercase tracking-widest">
+                            <span class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span> Live Feed
+                        </h3>
+                        <div id="camera-controls" class="flex gap-2">
+                            <button onclick="startCamera()" id="btn-start-cam" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-gray-300 px-3 py-1.5 rounded border border-gray-700 transition-colors uppercase font-bold tracking-wider">Start Cam</button>
+                            <button onclick="performScan()" id="btn-scan" class="hidden text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded font-bold uppercase tracking-wider flex items-center gap-1 shadow-[0_0_10px_rgba(37,99,235,0.5)]">Scan</button>
+                        </div>
+                    </div>
+                    
+                    <div class="relative bg-slate-950 flex-1 flex items-center justify-center overflow-hidden">
+                        <div class="absolute inset-0 opacity-10" style="background-image: linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px); background-size: 20px 20px;"></div>
+                        <video id="camera-feed" class="w-full h-full object-cover hidden" autoplay playsinline></video>
+                        <canvas id="camera-canvas" class="hidden"></canvas>
+                        <div id="cam-placeholder" class="text-center opacity-50">
+                            <i data-lucide="aperture" class="w-12 h-12 text-gray-600 mx-auto mb-3 animate-[spin_10s_linear_infinite]"></i>
+                            <p class="text-gray-500 text-xs font-mono uppercase tracking-widest">Signal Lost</p>
+                        </div>
+                        <div id="scan-overlay" class="hidden absolute inset-0 z-10 pointer-events-none">
+                            <div class="absolute inset-0 border-[3px] border-green-500/30 m-8 rounded-lg">
+                                <div class="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-green-400 -mt-1 -ml-1"></div>
+                                <div class="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-green-400 -mt-1 -mr-1"></div>
+                                <div class="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-green-400 -mb-1 -ml-1"></div>
+                                <div class="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-green-400 -mb-1 -mr-1"></div>
+                            </div>
+                            <div class="absolute bottom-12 w-full text-center">
+                                <span class="bg-black/50 text-green-400 text-[10px] font-mono px-3 py-1 border border-green-500/30 rounded">ALIGN PLATE</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-950 border-t border-gray-800 p-4 h-1/3 flex flex-col">
+                        <h4 class="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2 font-mono flex items-center gap-2">
+                            <i data-lucide="terminal" class="w-3 h-3"></i> System Logs
+                        </h4>
+                        <div id="activity-log" class="overflow-y-auto space-y-2 flex-1 scrollbar-hide font-mono text-xs"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modals Overlay -->
+    <div id="modal-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/60 transition-all duration-300">
+        <div class="absolute inset-0" onclick="closeModal()"></div>
+        <div id="modal-content" class="bg-slate-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden z-10 animate-slide-up relative"></div>
+    </div>
+
+    <!-- Script -->
+    <script>
+        // --- Constants & State ---
+        const RATES = { car: 50, bike: 20 };
+        const TOTAL_SLOTS = 12;
+        let stream = null;
+
+        // Credentials
+        const USERS = {
+            'driver': '123',
+            'admin': '123'
+        };
+
+        // Initial State (Will be overwritten by Firestore)
+        let state = {
+            currentUser: null,
+            view: 'login',
+            slots: Array.from({ length: TOTAL_SLOTS }, (_, i) => ({
+                id: i + 1, status: 'available', occupiedBy: null, type: 'standard'
+            })),
+            revenue: 0,
+            history: [],
+            selectedSlot: null
+        };
+
+        // --- Realtime DB Logic ---
+        function initRealtime() {
+            if (!window.db || !window.auth) return;
+
+            // Wait for Auth
+            window.auth.onAuthStateChanged(async (user) => {
+                if (user) {
+                    const statusEl = document.getElementById('connection-status');
+                    if(statusEl) statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-green-500 live-dot"></span> Live`;
+
+                    // Path: artifacts/{appId}/public/data/parking_lot/main
+                    const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'parking_lot');
+                    
+                    window.onSnapshot(docRef, (snapshot) => {
+                        if (snapshot.exists()) {
+                            const data = snapshot.data();
+                            // Merge cloud data with local session data (view, currentUser)
+                            state = {
+                                ...state,
+                                slots: data.slots || state.slots,
+                                revenue: data.revenue || 0,
+                                history: data.history || []
+                            };
+                            refreshUI();
+                        } else {
+                            // First time run: Initialize DB
+                            saveData();
+                        }
+                    }, (err) => {
+                        console.error("Sync Error:", err);
+                    });
+                }
+            });
+        }
+
+        async function saveData() {
+            if (!window.db) return;
+            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'parking_lot');
+            
+            // Only save shared data
+            const sharedState = {
+                slots: state.slots,
+                revenue: state.revenue,
+                history: state.history
+            };
+
+            try {
+                await window.setDoc(docRef, sharedState);
+            } catch (e) {
+                console.error("Save Error", e);
+            }
+        }
+
+        function resetSystem() {
+            if(confirm("Confirm System Reset? This action cannot be undone.")) {
+                // Reset State
+                state.slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => ({
+                    id: i + 1, status: 'available', occupiedBy: null, type: 'standard'
+                }));
+                state.revenue = 0;
+                state.history = [];
+                addLog("SYSTEM RESET PERFORMED", "alert");
+                saveData(); // Push empty state to cloud
+            }
+        }
+
+        // --- Auth Logic ---
+        function login() {
+            const user = document.getElementById('login-user').value.trim();
+            const pass = document.getElementById('login-pass').value.trim();
+
+            if (USERS[user] && USERS[user] === pass) {
+                state.currentUser = user;
+                state.view = user === 'admin' ? 'admin' : 'user';
+                showToast(`Welcome back, ${user}`, 'success');
+                switchView(state.view);
+                
+                // Ensure Realtime is hooked up
+                initRealtime();
+            } else {
+                showToast('Invalid Credentials', 'error');
+            }
+        }
+
+        function logout() {
+            state.currentUser = null;
+            state.view = 'login';
+            if (stream) stopCamera();
+            switchView('login');
+        }
+
+        function switchView(viewName) {
+            // Hide all
+            document.getElementById('login-view').classList.add('hidden');
+            document.getElementById('user-view').classList.add('hidden');
+            document.getElementById('admin-view').classList.add('hidden');
+            
+            const authControls = document.getElementById('auth-controls');
+
+            // Logic for Login View
+            if (viewName === 'login') {
+                document.getElementById('login-view').classList.remove('hidden');
+                authControls.classList.add('hidden');
+            } 
+            // Logic for App Views
+            else {
+                authControls.classList.remove('hidden');
+                document.getElementById('username-span').innerText = state.currentUser === 'admin' ? 'Administrator' : 'Driver';
+                
+                if (viewName === 'user') {
+                    document.getElementById('user-view').classList.remove('hidden');
+                    renderSlots('user-grid');
+                } else if (viewName === 'admin') {
+                    document.getElementById('admin-view').classList.remove('hidden');
+                    renderSlots('admin-grid');
+                    renderStats();
+                    renderLog();
+                }
+            }
+            lucide.createIcons();
+        }
+
+        function renderSlots(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+
+            state.slots.forEach((slot) => {
+                const div = document.createElement('div');
+                
+                let colorClass = "";
+                let iconHtml = "";
+                let statusText = "";
+                
+                if (slot.status === 'maintenance') {
+                    colorClass = "bg-maintenance border-gray-600 opacity-80 cursor-not-allowed";
+                    iconHtml = `<i data-lucide="cone" class="w-6 h-6 mb-2 text-yellow-500 drop-shadow-md"></i>`;
+                    statusText = "<span class='text-yellow-500 font-mono text-[10px] bg-black/50 px-1 rounded'>MAINTENANCE</span>";
+                } else if (slot.status === 'occupied') {
+                    colorClass = "bg-slate-800 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)] cursor-pointer hover:bg-red-900/10";
+                    const iconType = slot.occupiedBy?.type === 'bike' ? 'bike' : 'car-front';
+                    const verifiedBadge = slot.occupiedBy?.verified ? 
+                        `<div class="absolute top-2 right-2 text-green-400"><i data-lucide="shield-check" class="w-3 h-3"></i></div>` : '';
+                    
+                    iconHtml = `
+                        ${verifiedBadge}
+                        <i data-lucide="${iconType}" class="w-8 h-8 mb-2 text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]"></i>
+                        <span class="text-[10px] font-bold font-mono text-white tracking-widest bg-slate-900 px-2 py-1 rounded border border-gray-700">${slot.occupiedBy?.vehicleNo}</span>
+                    `;
+                } else {
+                    colorClass = "bg-slate-800 border-green-500/30 hover:border-green-400 hover:shadow-[0_0_15px_rgba(34,197,94,0.2)] cursor-pointer group";
+                    iconHtml = `<div class="text-green-500/30 group-hover:text-green-400 transition-colors">
+                                    <span class="text-2xl font-black font-mono opacity-50">${String(slot.id).padStart(2, '0')}</span>
+                                </div>`;
+                    statusText = "<span class='text-green-500 font-bold text-[10px] uppercase tracking-wider mt-1'>Open</span>";
+                }
+
+                div.className = `p-4 rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-all duration-300 min-h-[110px] relative overflow-hidden ${colorClass}`;
+                div.innerHTML = `${iconHtml}${statusText}`;
+                
+                div.onclick = () => handleSlotClick(slot);
+                container.appendChild(div);
+            });
+            
+            lucide.createIcons();
+        }
+
+        function handleSlotClick(slot) {
+            state.selectedSlot = slot.id;
+            if (state.view === 'user') {
+                if (slot.status === 'available') openModal('user-book');
+                else if (slot.status === 'occupied') openModal('user-pay', slot);
+            } else if (state.view === 'admin') {
+                if (slot.status === 'available') openModal('admin-manage-empty', slot);
+                else if (slot.status === 'maintenance') toggleMaintenance(slot.id);
+                else if (slot.status === 'occupied') openModal('admin-details', slot);
+            }
+        }
+
+        function openModal(type, data = null) {
+            const overlay = document.getElementById('modal-overlay');
+            const content = document.getElementById('modal-content');
+            overlay.classList.remove('hidden');
+            
+            const header = (title) => `
+                <div class="bg-slate-950 px-6 py-4 border-b border-gray-800 flex justify-between items-center">
+                    <h3 class="font-bold text-lg text-white uppercase tracking-wider">${title}</h3>
+                    <button onclick="closeModal()" class="text-gray-500 hover:text-white transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>`;
+
+            let html = '';
+            if (type === 'user-book') {
+                html = `${header(`Book Slot ${String(state.selectedSlot).padStart(2,'0')}`)}
+                    <div class="p-6 space-y-5">
+                        <div class="grid grid-cols-2 gap-3">
+                            <label class="cursor-pointer"><input type="radio" name="vType" value="car" class="peer sr-only" checked><div class="p-3 border border-gray-700 bg-slate-800 rounded-xl text-center peer-checked:border-yellow-500 peer-checked:bg-yellow-500/10 peer-checked:text-yellow-400 hover:border-gray-500 transition-all"><i data-lucide="car-front" class="w-6 h-6 mx-auto mb-1"></i><span class="text-xs font-bold">Car (₹${RATES.car}/hr)</span></div></label>
+                            <label class="cursor-pointer"><input type="radio" name="vType" value="bike" class="peer sr-only"><div class="p-3 border border-gray-700 bg-slate-800 rounded-xl text-center peer-checked:border-yellow-500 peer-checked:bg-yellow-500/10 peer-checked:text-yellow-400 hover:border-gray-500 transition-all"><i data-lucide="bike" class="w-6 h-6 mx-auto mb-1"></i><span class="text-xs font-bold">Bike (₹${RATES.bike}/hr)</span></div></label>
+                        </div>
+                        <input type="text" id="vNo" placeholder="PLATE NO (AP 05 AB 1234)" class="w-full bg-slate-950 text-white px-4 py-3 rounded-xl border border-gray-700 focus:ring-1 focus:ring-yellow-500 uppercase font-mono tracking-wider outline-none">
+                        <button onclick="userPark()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3 rounded-xl uppercase tracking-wide mt-2">Confirm</button>
+                    </div>`;
+            } else if (type === 'user-pay') {
+                const now = new Date();
+                const start = new Date(data.occupiedBy.startTime);
+                const diffHrs = Math.max(1, Math.ceil((now - start) / (1000 * 60 * 60)));
+                const total = diffHrs * (data.occupiedBy.type === 'car' ? RATES.car : RATES.bike);
+                html = `${header('Checkout')}
+                    <div class="p-6 text-center">
+                        <h2 class="text-5xl font-black text-white font-mono mb-2">₹${total}</h2>
+                        <p class="text-gray-400 text-sm mb-4">${data.occupiedBy.vehicleNo} • ${diffHrs} hrs</p>
+                        <button onclick="processPayment(${data.id}, ${total})" class="w-full bg-green-500 hover:bg-green-400 text-black font-black py-3 rounded-xl uppercase">Pay Now</button>
+                    </div>`;
+            } else if (type === 'admin-manage-empty') {
+                html = `${header('Slot Control')}
+                    <div class="p-6 space-y-3">
+                        <button onclick="toggleMaintenance(${data.id})" class="w-full p-4 border border-gray-700 bg-slate-800 rounded-xl hover:bg-slate-700 text-left font-bold text-white flex items-center gap-3"><i data-lucide="cone" class="text-yellow-500"></i> Toggle Maintenance</button>
+                        <button onclick="emergencyBookSetup()" class="w-full p-4 border border-red-900/30 bg-red-900/10 rounded-xl hover:bg-red-900/20 text-left font-bold text-red-400 flex items-center gap-3"><i data-lucide="siren"></i> Emergency Override</button>
+                    </div>`;
+            } else if (type === 'emergency-form') {
+                html = `${header('Override')}
+                    <div class="p-6 space-y-4">
+                        <input type="text" id="e-vNo" placeholder="VIP VEHICLE ID" class="w-full bg-slate-950 text-white px-4 py-3 rounded-xl border border-gray-700 uppercase font-mono">
+                        <button onclick="confirmEmergencyBook()" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl">Force Book</button>
+                    </div>`;
+            } else if (type === 'admin-details') {
+                html = `${header('Details')}
+                    <div class="p-6 text-center">
+                         <h4 class="text-3xl font-black text-white font-mono mb-1">${data.occupiedBy.vehicleNo}</h4>
+                         <p class="text-gray-400 text-xs uppercase font-bold mb-4">${data.occupiedBy.verified ? 'Verified' : 'Unverified'}</p>
+                         <div class="text-left bg-slate-950 p-4 rounded-xl border border-gray-800 text-sm space-y-2 font-mono">
+                            <div class="flex justify-between text-gray-500"><span>Entry</span> <span class="text-white">${new Date(data.occupiedBy.startTime).toLocaleTimeString()}</span></div>
+                         </div>
+                    </div>`;
+            }
+            content.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); }
+
+        // --- Core Logic ---
+        function userPark() {
+            const vNo = document.getElementById('vNo').value.toUpperCase();
+            if (!vNo) { showToast('License Plate Required', 'error'); return; }
+            updateSlot(state.selectedSlot, 'occupied', { vehicleNo: vNo, type: document.querySelector('input[name="vType"]:checked').value, startTime: new Date().toISOString(), verified: false });
+            addLog(`PARK: ${vNo}`, 'user');
+            closeModal();
+            showToast('Booked', 'success');
+        }
+
+        function processPayment(slotId, amount) {
+            updateSlot(slotId, 'available', null);
+            state.revenue += amount;
+            addLog(`PAID: ₹${amount}`, 'success');
+            saveData(); closeModal(); showToast('Paid', 'success');
+        }
+
+        function toggleMaintenance(id) {
+            const s = state.slots.find(x => x.id === id);
+            updateSlot(id, s.status === 'maintenance' ? 'available' : 'maintenance', null);
+            addLog(`MAINTENANCE: SLOT-${id}`, 'system'); closeModal();
+        }
+
+        function emergencyBookSetup() { openModal('emergency-form'); }
+        function confirmEmergencyBook() {
+            const vNo = document.getElementById('e-vNo').value.toUpperCase();
+            if(!vNo) return;
+            updateSlot(state.selectedSlot, 'occupied', { vehicleNo: vNo, type: 'car', startTime: new Date().toISOString(), verified: true });
+            addLog(`OVERRIDE: ${vNo}`, 'alert'); closeModal();
+        }
+
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                document.getElementById('camera-feed').srcObject = stream;
+                document.getElementById('camera-feed').classList.remove('hidden');
+                document.getElementById('cam-placeholder').classList.add('hidden');
+                document.getElementById('btn-scan').classList.remove('hidden');
+                document.getElementById('scan-overlay').classList.remove('hidden');
+                const btn = document.getElementById('btn-start-cam');
+                btn.innerText = "STOP"; btn.onclick = stopCamera; btn.classList.add('text-red-500', 'border-red-500');
+            } catch(e) { showToast("Cam Error", "error"); }
+        }
+
+        function stopCamera() {
+            if(stream) stream.getTracks().forEach(t=>t.stop()); stream=null;
+            document.getElementById('camera-feed').classList.add('hidden');
+            document.getElementById('cam-placeholder').classList.remove('hidden');
+            document.getElementById('btn-scan').classList.add('hidden');
+            document.getElementById('scan-overlay').classList.add('hidden');
+            const btn = document.getElementById('btn-start-cam');
+            btn.innerText = "START CAM"; btn.onclick = startCamera; btn.classList.remove('text-red-500', 'border-red-500');
+        }
+
+        async function performScan() {
+            const v = document.getElementById('camera-feed');
+            const c = document.getElementById('camera-canvas');
+            const b = document.getElementById('btn-scan');
+            b.disabled = true; b.innerHTML = '...';
+            c.width = v.videoWidth; c.height = v.videoHeight;
+            c.getContext('2d').drawImage(v, 0, 0);
+            try {
+                const { data: { text } } = await Tesseract.recognize(c, 'eng');
+                const clean = text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+                let m = false;
+                state.slots.forEach(s => { if(s.status === 'occupied' && !s.occupiedBy.verified && clean.includes(s.occupiedBy.vehicleNo)) { s.occupiedBy.verified = true; m = true; }});
+                if(m) { saveData(); refreshUI(); showToast('MATCHED', 'success'); addLog(`VERIFIED: ${clean}`, 'success'); }
+                else showToast('No Match', 'error');
+            } catch(e) {}
+            b.disabled = false; b.innerText = 'SCAN';
+        }
+
+        function updateSlot(id, status, data) {
+            const i = state.slots.findIndex(s => s.id === id);
+            state.slots[i].status = status; state.slots[i].occupiedBy = data;
+            saveData(); refreshUI();
+        }
+
+        function refreshUI() {
+            if(state.view === 'user') renderSlots('user-grid');
+            if(state.view === 'admin') { renderSlots('admin-grid'); renderStats(); }
+        }
+
+        function renderStats() {
+            const rev = document.getElementById('admin-revenue');
+            if(rev) rev.innerText = `₹${state.revenue}`;
+            
+            const occ = document.getElementById('admin-occupancy');
+            if(occ) occ.innerHTML = `${state.slots.filter(s => s.status === 'occupied').length}<span class="text-gray-600 text-lg">/12</span>`;
+            
+            const maint = document.getElementById('admin-maintenance');
+            if(maint) maint.innerText = state.slots.filter(s => s.status === 'maintenance').length;
+        }
+
+        function addLog(msg, type) {
+            const colors = { alert: 'text-red-400', success: 'text-green-400', system: 'text-blue-400', user: 'text-yellow-400' };
+            state.history.unshift({ msg, time: new Date().toLocaleTimeString(), color: colors[type] || 'text-gray-400' });
+            saveData(); renderLog();
+        }
+
+        function renderLog() {
+            const logContainer = document.getElementById('activity-log');
+            if(logContainer) {
+                logContainer.innerHTML = state.history.length === 0 ? '<p class="text-gray-600 text-center py-4 italic">Ready...</p>' : 
+                    state.history.map(i => `<div class="border-b border-gray-900/50 pb-1 mb-1"><span class="text-gray-600 mr-2">[${i.time}]</span><span class="${i.color}">${i.msg}</span></div>`).join('');
+            }
+        }
+
+        function showToast(msg, type='info') {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-message').innerText = msg;
+            const c = { error: 'bg-red-500', success: 'bg-green-500', info: 'bg-blue-500' };
+            document.getElementById('toast-icon-bg').className = `rounded-full p-1 ${c[type]}`;
+            t.classList.remove('hidden'); setTimeout(() => t.classList.add('hidden'), 3000);
+        }
+
+        if(state.currentUser) switchView(state.view);
+        else lucide.createIcons();
+
+        // Start Realtime immediately if we have config
+        initRealtime();
+
+    </script>
+</body>
+</html>
