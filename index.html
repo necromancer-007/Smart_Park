@@ -20,32 +20,56 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, setDoc, getDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase Configuration (Injected by environment or default)
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-        // Make Firebase accessible globally for the existing app logic
-        window.db = db;
-        window.auth = auth;
-        window.doc = doc;
-        window.setDoc = setDoc;
-        window.onSnapshot = onSnapshot;
-        window.appId = appId;
-        window.signInAnonymously = signInAnonymously;
+        // 1. Setup Firebase
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
         
-        // Start Auth
-        signInAnonymously(auth).then(() => {
-            console.log("Connected to Realtime Server");
-        }).catch((error) => {
-            console.error("Auth Error", error);
-            showToast("Connection Failed", "error");
-        });
+        if (firebaseConfig) {
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+            // Expose to window for the main script
+            window.db = db;
+            window.auth = auth;
+            window.doc = doc;
+            window.setDoc = setDoc;
+            window.onSnapshot = onSnapshot;
+            window.appId = appId;
+
+            // 2. Critical Auth Logic
+            // We must use the custom token if provided, otherwise permissions will fail
+            const initAuth = async () => {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        console.log("🔐 Authenticating with Custom Token...");
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        console.log("👤 Authenticating Anonymously...");
+                        await signInAnonymously(auth);
+                    }
+                    console.log("✅ Auth Success:", auth.currentUser?.uid);
+                    window.firebaseInitialized = true;
+                    window.dispatchEvent(new Event('firebase-ready'));
+                } catch (err) {
+                    console.error("❌ Auth Failed:", err);
+                    // Fallback attempt
+                    if (typeof __initial_auth_token !== 'undefined') {
+                         console.log("🔄 Retrying with Anonymous Auth...");
+                         await signInAnonymously(auth);
+                         window.firebaseInitialized = true;
+                         window.dispatchEvent(new Event('firebase-ready'));
+                    }
+                }
+            };
+
+            initAuth();
+        } else {
+            console.warn("⚠️ Firebase Config not found. Running in offline mode.");
+        }
     </script>
 
     <style>
@@ -115,8 +139,8 @@
             </div>
             <div class="flex flex-col">
                 <span class="font-black text-xl tracking-tight text-white uppercase italic leading-none">Smart<span class="text-yellow-400">Park</span></span>
-                <span id="connection-status" class="text-[10px] text-gray-500 font-mono flex items-center gap-1 mt-0.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span> Offline
+                <span id="connection-status" class="text-[10px] text-gray-500 font-mono flex items-center gap-1 mt-0.5 transition-all">
+                    <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Connecting...
                 </span>
             </div>
         </div>
@@ -334,6 +358,7 @@
         const RATES = { car: 50, bike: 20 };
         const TOTAL_SLOTS = 12;
         let stream = null;
+        let isRealtimeReady = false;
 
         // Credentials
         const USERS = {
@@ -355,16 +380,28 @@
 
         // --- Realtime DB Logic ---
         function initRealtime() {
+            if (!window.firebaseInitialized) {
+                // Wait specifically for the event we dispatch
+                window.addEventListener('firebase-ready', () => initRealtime());
+                return;
+            }
+
             if (!window.db || !window.auth) return;
 
-            // Wait for Auth
+            // Strict Auth Guard
             window.auth.onAuthStateChanged(async (user) => {
                 if (user) {
                     const statusEl = document.getElementById('connection-status');
                     if(statusEl) statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-green-500 live-dot"></span> Live`;
+                    
+                    isRealtimeReady = true;
 
-                    // Path: artifacts/{appId}/public/data/parking_lot/main
-                    const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'parking_lot');
+                    // Ensure AppID is valid string to prevent path errors
+                    const safeAppId = window.appId || 'parking-demo-v1';
+
+                    // Path: artifacts/{appId}/public/data/parking_data/main
+                    // Using 'parking_data' to be safe from reserved keywords
+                    const docRef = window.doc(window.db, 'artifacts', safeAppId, 'public', 'data', 'parking_data', 'main');
                     
                     window.onSnapshot(docRef, (snapshot) => {
                         if (snapshot.exists()) {
@@ -379,18 +416,25 @@
                             refreshUI();
                         } else {
                             // First time run: Initialize DB
+                            console.log("🔥 Creating Initial Data");
                             saveData();
                         }
                     }, (err) => {
                         console.error("Sync Error:", err);
+                        if(document.getElementById('connection-status')) {
+                             document.getElementById('connection-status').innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Error`;
+                        }
+                        showToast("Sync Error: " + err.code, "error");
                     });
                 }
             });
         }
 
         async function saveData() {
-            if (!window.db) return;
-            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'parking_lot');
+            if (!window.db || !window.auth.currentUser) return;
+            
+            const safeAppId = window.appId || 'parking-demo-v1';
+            const docRef = window.doc(window.db, 'artifacts', safeAppId, 'public', 'data', 'parking_data', 'main');
             
             // Only save shared data
             const sharedState = {
@@ -401,8 +445,10 @@
 
             try {
                 await window.setDoc(docRef, sharedState);
+                console.log("🔥 Data Saved");
             } catch (e) {
                 console.error("Save Error", e);
+                showToast("Save Failed: Permission Denied?", "error");
             }
         }
 
@@ -430,8 +476,10 @@
                 showToast(`Welcome back, ${user}`, 'success');
                 switchView(state.view);
                 
-                // Ensure Realtime is hooked up
-                initRealtime();
+                // Initialize Realtime only after successful logic login
+                // (Auth state might already be true if cached, but this triggers the UI flow)
+                if (window.firebaseInitialized) initRealtime();
+                
             } else {
                 showToast('Invalid Credentials', 'error');
             }
@@ -712,8 +760,8 @@
         if(state.currentUser) switchView(state.view);
         else lucide.createIcons();
 
-        // Start Realtime immediately if we have config
-        initRealtime();
+        // Start Realtime immediately if possible
+        if (window.firebaseInitialized) initRealtime();
 
     </script>
 </body>
