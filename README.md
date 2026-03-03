@@ -2,6 +2,8 @@
 
 A fully-fleshed out smart parking interface separated into a modern backend/frontend architecture.
 
+This project was developed with the assistance of AI tools for code structuring, optimization guidance, and implementation support. Final design decisions, architecture, and integration were completed manually.
+
 ## Architecture
 - **Backend**: Python (FastAPI). Exposes a `/scan` OCR endpoint and connects securely to Firebase Firestore via the official Admin SDK. Uses `pytesseract` and `opencv-python`.
 - **Frontend**: Lightweight HTML/JS/CSS, styled with TailwindCSS. Listens in real-time to Firebase Firestore for immediate cross-device sync. Connects the device camera natively and streams individual frames to the backend for OCR.
