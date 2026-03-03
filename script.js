@@ -5,7 +5,7 @@ let stream = null;
 let isRealtimeReady = false;
 
 // Backend API URL (Dynamically targets the same host on port 8000)
-const BACKEND_URL = "https://smart-park-0e6g.onrender.com";
+const BACKEND_URL = 'https://smart-park-0e6g.onrender.com';
 
 const USERS = { 'driver': '123', 'admin': '123' };
 
