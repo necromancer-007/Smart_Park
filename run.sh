@@ -5,11 +5,17 @@
 # Start backend in background
 echo "Starting FastAPI Backend..."
 cd backend
+<<<<<<< HEAD
 if [ -f "venv/bin/activate" ]; then
     echo "Activating virtual environment..."
     source venv/bin/activate
 fi
 python3 -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload &
+=======
+# Optionally activate a virtual environment if you created one:
+# source venv/bin/activate
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload &
+>>>>>>> 00858bb97747d3e04cc37432b6fa09e536f347f6
 BACKEND_PID=$!
 
 # Move back to root

@@ -1,0 +1,231 @@
+/*
+  Tailwind directives can go here if using a build step, 
+  but since we are using CDN, these serve as custom css. 
+*/
+
+/* --- THEME VARIABLES --- */
+:root {
+    --color-slate-950: 2 6 23;
+    --color-slate-900: 15 23 42;
+    --color-slate-800: 30 41 59;
+    --color-gray-900: 17 24 39;
+    --color-gray-800: 31 41 55;
+    --color-gray-700: 55 65 81;
+    --color-gray-600: 75 85 99;
+    --color-gray-500: 107 114 128;
+    --color-gray-400: 156 163 175;
+    --color-gray-100: 243 244 246;
+    --color-yellow-500: 234 179 8;
+    --color-white: 255 255 255;
+}
+
+body.theme-light {
+    --color-gray-100: 31 41 55;
+    /* gray-800 */
+    --color-yellow-500: 202 138 4;
+    /* yellow-600 */
+    --color-slate-950: 243 244 246;
+    --color-slate-900: 249 250 251;
+    --color-slate-800: 255 255 255;
+    --color-gray-900: 229 231 235;
+    --color-gray-800: 209 213 219;
+    --color-gray-700: 156 163 175;
+    --color-gray-600: 107 114 128;
+    --color-gray-500: 75 85 99;
+    --color-gray-400: 55 65 81;
+    --color-white: 15 23 42;
+}
+
+body.theme-oled {
+    --color-slate-950: 0 0 0;
+    --color-slate-900: 0 0 0;
+    --color-slate-800: 0 0 0;
+    --color-gray-900: 20 20 20;
+    --color-gray-800: 35 35 35;
+    --color-gray-700: 50 50 50;
+    --color-gray-600: 65 65 65;
+    --color-gray-500: 90 90 90;
+    --color-gray-400: 140 140 140;
+    --color-gray-100: 243 244 246;
+    --color-yellow-500: 234 179 8;
+    --color-white: 255 255 255;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+.font-mono {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Base interactive smoothness */
+button,
+.cursor-pointer,
+select {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+button:active,
+.cursor-pointer:active {
+    transform: scale(0.96);
+    filter: brightness(0.9);
+}
+
+/* OLED Highlights - Glossy & Blur */
+body.theme-oled .bg-slate-800,
+body.theme-oled .bg-slate-900,
+body.theme-oled #modal-content,
+body.theme-oled #graphs-modal-content {
+    background: linear-gradient(145deg, rgba(30, 30, 30, 0.4) 0%, rgba(0, 0, 0, 1) 100%) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    /* Removed !important and subtle */
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Specific Slot edge lighting for OLED */
+body.theme-oled .border-green-500\/30 {
+    border-color: rgba(34, 197, 94, 0.4) !important;
+    box-shadow: inset 0 0 10px rgba(34, 197, 94, 0.05), 0 0 10px rgba(34, 197, 94, 0.1) !important;
+}
+
+body.theme-oled .border-red-500\/50 {
+    border-color: rgba(239, 68, 68, 0.5) !important;
+    box-shadow: inset 0 0 10px rgba(239, 68, 68, 0.05), 0 0 15px rgba(239, 68, 68, 0.15) !important;
+}
+
+body.theme-oled .bg-maintenance {
+    border-color: rgba(234, 179, 8, 0.4) !important;
+    box-shadow: 0 0 10px rgba(234, 179, 8, 0.1) !important;
+}
+
+body.theme-oled .hover\:border-green-500\/30:hover {
+    border-color: rgba(34, 197, 94, 0.8) !important;
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.25) !important;
+}
+
+body.theme-oled .hover\:border-blue-500\/30:hover {
+    border-color: rgba(59, 130, 246, 0.8) !important;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.25) !important;
+}
+
+body.theme-oled .hover\:border-yellow-500\/30:hover {
+    border-color: rgba(234, 179, 8, 0.8) !important;
+    box-shadow: 0 0 20px rgba(234, 179, 8, 0.25) !important;
+}
+
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-slide-up {
+    animation: slideIn 0.4s ease-out forwards;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.bg-maintenance {
+    background-color: #2a2a2a;
+    background-image: repeating-linear-gradient(45deg, #333, #333 10px, #fbbf24 10px, #fbbf24 20px);
+}
+
+video {
+    transform: scaleX(-1);
+}
+
+.slot-line {
+    border-left: 2px dashed #64748b;
+    border-right: 2px dashed #64748b;
+}
+
+@keyframes pulse-green {
+    0% {
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(74, 222, 128, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+    }
+}
+
+.live-dot {
+    animation: pulse-green 2s infinite;
+}
+
+/* ==== Micro‑animations ==== */
+/* Pulse for available slots */
+@keyframes slot-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+    }
+
+    70% {
+        box-shadow: 0 0 0 8px rgba(74, 222, 128, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+    }
+}
+
+.slot-pulse {
+    animation: slot-pulse 2s infinite;
+}
+
+/* Flip animation when state changes */
+@keyframes slot-flip {
+    from {
+        transform: rotateY(0deg);
+    }
+
+    to {
+        transform: rotateY(180deg);
+    }
+}
+
+.slot-flip {
+    animation: slot-flip 0.4s forwards;
+}
+
+/* Log entry fade‑in */
+@keyframes log-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.log-entry {
+    animation: log-fade-in 0.3s ease-out;
+}
