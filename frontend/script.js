@@ -544,6 +544,17 @@ async function runDetectionLoop() {
                     ctx.shadowColor = 'rgba(34, 197, 94, 0.5)';
                     ctx.shadowBlur = 15;
                     ctx.stroke();
+
+                    // Auto-scan logic: Trigger a full scan if a bbox is found, max once every 2.5 seconds
+                    if (!window.isScanningLocked) {
+                        if (!window.lastAutoScan || (Date.now() - window.lastAutoScan > 2500)) {
+                            window.lastAutoScan = Date.now();
+                            window.isScanningLocked = true;
+                            performScan(true).finally(() => { 
+                                window.isScanningLocked = false; 
+                            });
+                        }
+                    }
                 }
             } catch (e) { console.error("Detection error"); }
         }, 'image/jpeg', 0.5); // Low quality for speed
@@ -553,49 +564,54 @@ async function runDetectionLoop() {
 }
 
 // OCR Processing via FastAPI Backend
-async function performScan() {
+async function performScan(isAuto = false) {
     const v = document.getElementById('camera-feed');
     const c = document.getElementById('camera-canvas');
     const b = document.getElementById('btn-scan');
 
-    b.disabled = true;
-    b.innerHTML = 'Scanning...';
+    if (!isAuto) {
+        b.disabled = true;
+        b.innerHTML = 'Scanning...';
+    }
 
     c.width = v.videoWidth;
     c.height = v.videoHeight;
     c.getContext('2d').drawImage(v, 0, 0);
 
     // Convert canvas to a blob (image file)
-    c.toBlob(async (blob) => {
-        if (!blob) {
-            showToast('Failed to capture frame', 'error');
-            b.disabled = false; b.innerText = 'SCAN BASEPLATE';
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('image', blob, 'frame.jpg');
-
-        try {
-            // Send image to backend
-            const response = await fetch(`${BACKEND_URL}/scan`, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error(`Server error: ${response.status}`);
+    return new Promise((resolve) => {
+        c.toBlob(async (blob) => {
+            if (!blob) {
+                if (!isAuto) showToast('Failed to capture frame', 'error');
+                if (!isAuto) { b.disabled = false; b.innerText = 'SCAN BASEPLATE'; }
+                return resolve();
             }
 
-            const result = await response.json();
-            const { plate, bbox } = result;
+            const formData = new FormData();
+            formData.append('image', blob, 'frame.jpg');
 
-            if (result.success) {
-                if (result.database_updated) {
-                    showToast('MATCHED & VERIFIED', 'success');
-                    // Note: If using real-time Firebase, `refreshUI` shouldn't be strictly necessary 
-                    // because the listener should trigger. But we can call it for offline sync or faster response.
-                } else {
+            try {
+                // Send image to backend
+                const response = await fetch(`${BACKEND_URL}/scan`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const { plate, bbox } = result;
+
+                if (result.success) {
+                    // Log success to the system log
+                    addLog(`SCAN PARSED: ${result.plate}`, 'system');
+
+                    if (result.database_updated) {
+                        showToast('MATCHED & VERIFIED', 'success');
+                        addLog(`VERIFIED CLOUD: ${result.plate}`, 'success');
+                    } else {
                     // Fallback for offline mode or missing Firebase backend config
                     let matchFound = false;
                     for (let slot of state.slots) {
@@ -620,13 +636,15 @@ async function performScan() {
                 showToast(result.message || 'No Match', 'error');
             }
 
-        } catch (e) {
-            console.error("Scan Error:", e);
-            showToast('Backend Error. Is it running?', 'error');
-        } finally {
-            b.disabled = false; b.innerText = 'SCAN BASEPLATE';
-        }
-    }, 'image/jpeg', 0.8);
+            } catch (e) {
+                console.error("Scan Error:", e);
+                if (!isAuto) showToast('Backend Error. Is it running?', 'error');
+            } finally {
+                if (!isAuto) { b.disabled = false; b.innerText = 'SCAN BASEPLATE'; }
+                resolve();
+            }
+        }, 'image/jpeg', 0.8);
+    });
 }
 
 // Initialize on load
