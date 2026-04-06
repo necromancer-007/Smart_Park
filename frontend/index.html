@@ -151,12 +151,9 @@
 
         // Init theme immediately to prevent flicker
         const savedTheme = localStorage.getItem('parking_theme') || 'dark';
-        if (savedTheme !== 'dark') {
-            document.onreadystatechange = function () {
-                if (document.readyState === "complete") {
-                    document.body.classList.add(`theme-${savedTheme}`);
-                }
-            };
+        if (savedTheme === 'light') {
+            document.documentElement.classList.add('theme-light');
+            document.body.classList.add('theme-light');
         }
     </script>
 </head>
@@ -195,15 +192,13 @@
 
         <!-- Right Side Nav -->
         <div class="flex items-center gap-4">
-            <!-- Theme Selector -->
-            <div class="flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-xl border border-gray-700">
-                <span class="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Theme:</span>
-                <select id="theme-selector" onchange="setTheme(this.value)"
-                    class="bg-transparent text-gray-200 text-xs font-bold outline-none cursor-pointer hover:text-white transition-colors">
-                    <option value="dark">Dark</option>
-                    <option value="oled">OLED Black</option>
-                    <option value="light">Light</option>
-                </select>
+            <!-- Theme Selector Button -->
+            <div class="flex items-center gap-3">
+                <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">
+                    <div id="theme-toggle-thumb">
+                        <i data-lucide="sun" class="text-black" id="theme-icon"></i>
+                    </div>
+                </button>
             </div>
 
             <!-- Auth Controls -->
@@ -219,16 +214,71 @@
             </div>
         </div>
     </nav>
+
     <script>
-        function setTheme(theme) {
-            document.body.classList.remove('theme-light', 'theme-oled');
-            if (theme !== 'dark') {
-                document.body.classList.add(`theme-${theme}`);
+        function toggleTheme(event) {
+            const isLight = document.body.classList.contains('theme-light');
+            const nextTheme = isLight ? 'dark' : 'light';
+
+            // 1. Apply theme instantly (background colors change via CSS)
+            document.body.classList.toggle('theme-light');
+            document.documentElement.classList.toggle('theme-light');
+            localStorage.setItem('parking_theme', nextTheme);
+
+            // 2. Update icon immediately
+            const icon = document.getElementById('theme-icon');
+            if (nextTheme === 'light') {
+                icon.setAttribute('data-lucide', 'moon');
+                icon.classList.add('text-white');
+                icon.classList.remove('text-black');
+            } else {
+                icon.setAttribute('data-lucide', 'sun');
+                icon.classList.add('text-black');
+                icon.classList.remove('text-white');
             }
-            localStorage.setItem('parking_theme', theme);
+            if (window.lucide) lucide.createIcons();
             if (typeof updateGraphs === 'function') updateGraphs();
+
+            // 3. Prepare ripple overlay (use the NEW theme's background color)
+            const overlay = document.getElementById('theme-ripple-overlay');
+            const btn = document.getElementById('theme-toggle-btn');
+            const rect = btn.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            overlay.style.setProperty('--ripple-x', `${x}px`);
+            overlay.style.setProperty('--ripple-y', `${y}px`);
+            // Set overlay color to match the newly applied theme background
+            const bg = getComputedStyle(document.body).backgroundColor;
+            overlay.style.backgroundColor = bg;
+            // Reset and start animation using requestAnimationFrame for smoothness
+            overlay.classList.remove('expanding');
+            overlay.style.transition = 'none';
+            // Force reflow
+            void overlay.offsetWidth;
+            // Start animation on next frame
+            requestAnimationFrame(() => {
+                overlay.style.transition = 'clip-path 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+                overlay.classList.add('expanding');
+            });
+
+            // 4. Cleanup after animation ends
+            overlay.addEventListener('transitionend', function handler() {
+                overlay.classList.remove('expanding');
+                overlay.style.transition = 'none';
+                overlay.removeEventListener('transitionend', handler);
+            });
         }
-        document.getElementById('theme-selector').value = localStorage.getItem('parking_theme') || 'dark';
+
+        // Apply initial icon
+        document.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('parking_theme') === 'light') {
+                const icon = document.getElementById('theme-icon');
+                icon.setAttribute('data-lucide', 'moon');
+                icon.classList.add('text-white');
+                icon.classList.remove('text-black');
+                if (window.lucide) lucide.createIcons();
+            }
+        });
     </script>
 
     <!-- Main Content -->
@@ -497,6 +547,7 @@
                             style="background-image: linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px); background-size: 20px 20px;">
                         </div>
                         <video id="camera-feed" class="w-full h-full object-cover hidden" autoplay playsinline></video>
+                        <canvas id="detection-canvas" class="absolute inset-0 z-20 pointer-events-none"></canvas>
                         <canvas id="camera-canvas" class="hidden"></canvas>
                         <div id="cam-placeholder" class="text-center opacity-50">
                             <i data-lucide="aperture"

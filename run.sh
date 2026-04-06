@@ -9,7 +9,7 @@ if [ -f "venv/bin/activate" ]; then
     echo "Activating virtual environment..."
     source venv/bin/activate
 fi
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload &
+python3 -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload &
 BACKEND_PID=$!
 
 # Move back to root

@@ -46,7 +46,8 @@ Alternatively, run them separately:
 **Backend:**
 ```bash
 cd backend
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+source venv/bin/activate
+python3 -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Frontend:**

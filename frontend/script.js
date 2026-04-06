@@ -3,6 +3,8 @@ const RATES = { car: 50, bike: 20 };
 const TOTAL_SLOTS = 12;
 let stream = null;
 let isRealtimeReady = false;
+let isDetecting = false;
+let detectionTimeout = null;
 
 // Backend API URL (Dynamically targets the same host on port 8000)
 const BACKEND_URL = `http://${window.location.hostname}:8000`;
@@ -467,24 +469,87 @@ function showToast(msg, type = 'info') {
 async function startCamera() {
     try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        document.getElementById('camera-feed').srcObject = stream;
-        document.getElementById('camera-feed').classList.remove('hidden');
+        const v = document.getElementById('camera-feed');
+        v.srcObject = stream;
+        v.classList.remove('hidden');
         document.getElementById('cam-placeholder').classList.add('hidden');
         document.getElementById('btn-scan').classList.remove('hidden');
         document.getElementById('btn-start-cam').innerText = "STOP";
         document.getElementById('btn-start-cam').onclick = stopCamera;
         document.getElementById('btn-start-cam').classList.add('text-red-500', 'border-red-500');
+
+        isDetecting = true;
+        runDetectionLoop();
     } catch (e) { showToast("Cam Error", "error"); }
 }
 
 function stopCamera() {
     if (stream) stream.getTracks().forEach(t => t.stop()); stream = null;
+    isDetecting = false;
+    if (detectionTimeout) clearTimeout(detectionTimeout);
+
+    // Clear overlay
+    const canvas = document.getElementById('detection-canvas');
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+
     document.getElementById('camera-feed').classList.add('hidden');
     document.getElementById('cam-placeholder').classList.remove('hidden');
     document.getElementById('btn-scan').classList.add('hidden');
     document.getElementById('btn-start-cam').innerText = "START CAM";
     document.getElementById('btn-start-cam').onclick = startCamera;
     document.getElementById('btn-start-cam').classList.remove('text-red-500', 'border-red-500');
+}
+
+async function runDetectionLoop() {
+    if (!isDetecting || !stream) return;
+
+    const v = document.getElementById('camera-feed');
+    const c = document.getElementById('camera-canvas');
+    const overlay = document.getElementById('detection-canvas');
+    const ctx = overlay.getContext('2d');
+
+    if (v.readyState === v.HAVE_ENOUGH_DATA) {
+        // Sync dimensions
+        overlay.width = v.clientWidth;
+        overlay.height = v.clientHeight;
+        c.width = v.videoWidth;
+        c.height = v.videoHeight;
+        c.getContext('2d').drawImage(v, 0, 0);
+
+        // Capture frame
+        c.toBlob(async (blob) => {
+            if (!blob || !isDetecting) return;
+
+            // Clear previous before drawing new ones
+            if (isDetecting) ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+            const formData = new FormData();
+            formData.append('image', blob, 'detect.jpg');
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/detect`, { method: 'POST', body: formData });
+                const { bbox } = await res.json();
+
+                ctx.clearRect(0, 0, overlay.width, overlay.height);
+                if (bbox && isDetecting) {
+                    // Map video coordinates to overlay coordinates
+                    const scaleX = overlay.width / v.videoWidth;
+                    const scaleY = overlay.height / v.videoHeight;
+
+                    ctx.strokeStyle = '#22c55e'; // green-500
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(bbox.x * scaleX, bbox.y * scaleY, bbox.w * scaleX, bbox.h * scaleY);
+
+                    // Add subtle glow
+                    ctx.shadowColor = 'rgba(34, 197, 94, 0.5)';
+                    ctx.shadowBlur = 15;
+                    ctx.stroke();
+                }
+            } catch (e) { console.error("Detection error"); }
+        }, 'image/jpeg', 0.5); // Low quality for speed
+    }
+
+    detectionTimeout = setTimeout(runDetectionLoop, 200); // 5 FPS
 }
 
 // OCR Processing via FastAPI Backend
@@ -523,6 +588,7 @@ async function performScan() {
             }
 
             const result = await response.json();
+            const { plate, bbox } = result;
 
             if (result.success) {
                 if (result.database_updated) {
