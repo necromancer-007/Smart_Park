@@ -152,15 +152,15 @@ function renderSlots(containerId) {
         let colorClass = "", iconHtml = "";
 
         if (slot.status === 'maintenance') {
-            colorClass = "bg-maintenance border-gray-600 opacity-80 cursor-not-allowed";
-            iconHtml = `<i data-lucide="cone" class="w-6 h-6 mb-2 text-yellow-500 drop-shadow-md"></i><span class='text-yellow-500 font-mono text-[10px] bg-black/50 px-1 rounded'>MAINTENANCE</span>`;
+            colorClass = "slot-maintenance";
+            iconHtml = `<i data-lucide="cone" class="w-6 h-6 mb-2 text-yellow-500 drop-shadow-md"></i><span class='text-yellow-500 font-mono text-[10px] bg-slate-900 px-1 rounded border border-gray-700'>MAINTENANCE</span>`;
         } else if (slot.status === 'occupied') {
-            colorClass = "bg-slate-800 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)] cursor-pointer hover:bg-red-900/10";
+            colorClass = "slot-occupied";
             const verified = slot.occupiedBy?.verified ? `<div class="absolute top-2 right-2 text-green-400"><i data-lucide="shield-check" class="w-3 h-3"></i></div>` : '';
             iconHtml = `${verified}<i data-lucide="${slot.occupiedBy?.type === 'bike' ? 'bike' : 'car-front'}" class="w-8 h-8 mb-2 text-red-500"></i><span class="text-[10px] font-bold font-mono text-white tracking-widest bg-slate-900 px-2 py-1 rounded border border-gray-700">${slot.occupiedBy?.vehicleNo}</span>`;
         } else {
-            colorClass = "bg-slate-800 border-green-500/30 hover:border-green-400 hover:shadow-[0_0_15px_rgba(34,197,94,0.2)] cursor-pointer group";
-            iconHtml = `<div class="text-green-500/30 group-hover:text-green-400 transition-colors"><span class="text-2xl font-black font-mono opacity-50">${String(slot.id).padStart(2, '0')}</span></div><span class='text-green-500 font-bold text-[10px] uppercase tracking-wider mt-1'>Open</span>`;
+            colorClass = "slot-available group";
+            iconHtml = `<div class="text-green-500/30 group-hover:text-green-500 transition-colors"><span class="text-2xl font-black font-mono opacity-50">${String(slot.id).padStart(2, '0')}</span></div><span class='text-green-500 font-bold text-[10px] uppercase tracking-wider mt-1'>Open</span>`;
         }
 
         div.className = `p-4 rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-all duration-300 min-h-[110px] relative overflow-hidden ${colorClass}`;
@@ -382,9 +382,8 @@ function initOrUpdateChart(type) {
     const ctx = document.getElementById('modalChart').getContext('2d');
 
     // Check current theme for dynamic colors
-    const isLight = document.body.classList.contains('theme-light');
-    const labelColor = isLight ? '#4b5563' : '#9ca3af'; // gray-600 vs gray-400
-    const gridColor = isLight ? 'rgba(0,0,0,0.05)' : '#374151';
+    const labelColor = '#9ca3af'; // Always use light text on dark background
+    const gridColor = '#374151';
 
     // Basic Chart Data with dark mode friendly options
     let data = { labels: [], datasets: [] };
