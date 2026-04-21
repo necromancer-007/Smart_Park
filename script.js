@@ -6,8 +6,9 @@ let isRealtimeReady = false;
 let isDetecting = false;
 let detectionTimeout = null;
 
-// Backend API URL (Dynamically targets the same host on port 8000)
-const BACKEND_URL = `http://${window.location.hostname}:8000`;
+// Backend API URL (Dynamically targets the same host on port 8000, or localhost if opened directly)
+// Backend API URL (Hardcoded to local machine to work from GitHub Pages)
+const BACKEND_URL = 'http://127.0.0.1:8000';
 
 const USERS = { 'driver': '123', 'admin': '123' };
 
