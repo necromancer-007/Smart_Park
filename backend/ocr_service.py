@@ -2,6 +2,19 @@ import cv2
 import pytesseract
 import numpy as np
 import re
+import platform
+import os
+
+# macOS Homebrew support: Ensure tesseract is found even if not in PATH
+if platform.system() == "Darwin":
+    common_tesseract_paths = [
+        "/opt/homebrew/bin/tesseract",  # Apple Silicon
+        "/usr/local/bin/tesseract",     # Intel
+    ]
+    for path in common_tesseract_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            break
 
 def clean_plate_text(text: str) -> str:
     """
