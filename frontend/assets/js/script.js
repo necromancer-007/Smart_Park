@@ -13,7 +13,7 @@ let isLoginInProgress = false;
 
 // Backend API URL (Dynamically targets the same host on port 8000, or localhost if opened directly)
 // Backend API URL (Hardcoded to local machine to work from GitHub Pages)
-const BACKEND_URL = 'http://127.0.0.1:8000';
+const BACKEND_URL = 'https://smart-park-backend-kphl.onrender.com';
 
 let state = {
     currentUser: null,
