@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./frontend/assets/images/banner.svg" alt="SmartPark Banner" width="100%">
+</p>
+
 # Smart Parking System
 
 A modern, cloud-synced Smart Parking Command Center and Driver booking platform. The project is structured with a lightweight, premium frontend designed for Vercel, and an AI-powered detection/OCR backend designed for Render.
