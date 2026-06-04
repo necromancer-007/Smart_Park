@@ -1,0 +1,477 @@
+/*
+  Tailwind directives can go here if using a build step, 
+  but since we are using CDN, these serve as custom css. 
+*/
+
+/* --- THEME VARIABLES --- */
+:root {
+    --color-slate-950: 2 6 23;
+    --color-slate-900: 15 23 42;
+    --color-slate-800: 30 41 59;
+    --color-gray-900: 17 24 39;
+    --color-gray-800: 31 41 55;
+    --color-gray-700: 55 65 81;
+    --color-gray-600: 75 85 99;
+    --color-gray-500: 107 114 128;
+    --color-gray-400: 156 163 175;
+    --color-gray-100: 243 244 246;
+    --color-yellow-400: 250 204 21;
+    --color-yellow-500: 234 179 8;
+    --color-white: 255 255 255;
+}
+
+body.theme-light {
+    --color-slate-950: 248 250 252;
+    --color-slate-900: 241 245 249;
+    --color-slate-800: 255 255 255;
+    --color-gray-900: 226 232 240;
+    --color-gray-800: 226 232 240;
+    --color-gray-700: 203 213 225;
+    --color-gray-600: 100 116 139;
+    --color-gray-500: 71 85 105;
+    --color-gray-400: 51 65 85;
+    --color-gray-100: 15 23 42;
+    --color-white: 15 23 42;
+}
+
+/* Specific text color overrides for text directly sitting on the light body background */
+body.theme-light .heading-text {
+    color: #000 !important;
+}
+
+body.theme-light .subheading-text {
+    color: #4b5563 !important;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-image:
+        radial-gradient(circle at 10% 0%, rgba(234, 179, 8, 0.08), transparent 30%),
+        radial-gradient(circle at 90% 10%, rgba(59, 130, 246, 0.06), transparent 25%);
+    transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1), color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+nav,
+.bg-slate-800,
+.bg-slate-950,
+input,
+select,
+textarea {
+    transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, box-shadow 0.35s ease;
+}
+
+
+
+/* Ensure elements transition smoothly */
+button,
+.cursor-pointer,
+select {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+button:active {
+    transform: scale(0.97);
+}
+
+
+
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-slide-up {
+    animation: slideIn 0.48s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.fast-track-panel {
+    border-color: rgba(234, 179, 8, 0.3);
+    box-shadow: 0 0 20px rgba(234, 179, 8, 0.1);
+}
+
+.stat-hover:hover {
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+}
+
+.slot-available {
+    background-color: rgb(var(--color-slate-800));
+    border-color: rgba(34, 197, 94, 0.3);
+    cursor: pointer;
+    transform: translateY(0);
+}
+.slot-available:hover {
+    border-color: rgba(34, 197, 94, 0.8);
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
+    transform: translateY(-4px);
+}
+
+.slot-occupied {
+    background-color: rgb(var(--color-slate-800));
+    border-color: rgba(239, 68, 68, 0.5);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.1);
+    cursor: pointer;
+}
+.slot-occupied:hover {
+    background-color: rgba(127, 29, 29, 0.1);
+    transform: translateY(-4px);
+}
+
+@keyframes yellow-shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes yellow-glow {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(234, 179, 8, 0.15);
+        border-color: rgba(234, 179, 8, 0.4) !important;
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(234, 179, 8, 0.5);
+        border-color: rgba(234, 179, 8, 0.95) !important;
+    }
+}
+
+.slot-unverified {
+    background: linear-gradient(
+        90deg,
+        rgb(var(--color-slate-800)) 0%,
+        rgb(var(--color-slate-800)) 35%,
+        rgba(234, 179, 8, 0.08) 50%,
+        rgb(var(--color-slate-800)) 65%,
+        rgb(var(--color-slate-800)) 100%
+    ) !important;
+    background-size: 200% 100% !important;
+    animation: yellow-shimmer 3.5s infinite linear, yellow-glow 2s infinite ease-in-out !important;
+}
+
+.slot-unverified:hover {
+    background: rgba(234, 179, 8, 0.1) !important;
+    box-shadow: 0 0 25px rgba(234, 179, 8, 0.5) !important;
+    border-color: rgba(234, 179, 8, 1) !important;
+    transform: translateY(-4px);
+}
+
+.slot-maintenance {
+    background-color: #2a2a2a;
+    background-image: repeating-linear-gradient(45deg, #333, #333 10px, #fbbf24 10px, #fbbf24 20px);
+    border-color: rgb(var(--color-gray-600));
+    opacity: 0.8;
+    cursor: not-allowed;
+}
+
+video {
+    transform: scaleX(-1);
+}
+
+.slot-line {
+    border-left: 2px dashed #64748b;
+    border-right: 2px dashed #64748b;
+}
+
+@keyframes pulse-green {
+    0% {
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(74, 222, 128, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+    }
+}
+
+.live-dot {
+    animation: pulse-green 2s infinite;
+}
+
+/* ==== Micro‑animations ==== */
+/* Pulse for available slots */
+@keyframes slot-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+    }
+
+    70% {
+        box-shadow: 0 0 0 8px rgba(74, 222, 128, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+    }
+}
+
+.slot-pulse {
+    animation: slot-pulse 2s infinite;
+}
+
+/* Flip animation when state changes */
+@keyframes slot-flip {
+    from {
+        transform: rotateY(0deg);
+    }
+
+    to {
+        transform: rotateY(180deg);
+    }
+}
+
+.slot-flip {
+    animation: slot-flip 0.4s forwards;
+}
+
+/* Log entry fade‑in */
+@keyframes log-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.log-entry {
+    animation: log-fade-in 0.3s ease-out;
+}
+
+.saved-plate {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding: 0.9rem 1rem;
+    border-radius: 0.9rem;
+    border: 1px solid rgb(var(--color-gray-700));
+    background: rgb(var(--color-slate-950));
+    color: rgb(var(--color-white));
+    text-align: left;
+}
+
+.saved-plate span {
+    color: rgb(var(--color-gray-500));
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.saved-plate strong {
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.08em;
+}
+
+.saved-plate:hover {
+    border-color: rgb(var(--color-yellow-500));
+    transform: translateY(-3px);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.saved-plate.empty strong {
+    color: rgb(var(--color-gray-500));
+}
+
+.settings-card {
+    animation: settings-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes settings-in {
+    from { opacity: 0; transform: translateY(18px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.settings-label {
+    display: block;
+    margin-bottom: 0.45rem;
+    color: rgb(var(--color-gray-500));
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.settings-input {
+    width: 100%;
+    padding: 0.8rem 0.9rem;
+    border: 1px solid rgb(var(--color-gray-700));
+    border-radius: 0.75rem;
+    outline: none;
+    background: rgb(var(--color-slate-950));
+    color: rgb(var(--color-white));
+}
+
+.settings-input:focus {
+    border-color: rgb(var(--color-yellow-500));
+    box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.14);
+}
+
+.plate-input {
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+}
+
+.theme-choice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.8rem;
+    border: 1px solid rgb(var(--color-gray-700));
+    border-radius: 0.8rem;
+    background: rgb(var(--color-slate-950));
+    color: rgb(var(--color-gray-400));
+    font-weight: 700;
+}
+
+.theme-choice.active {
+    border-color: rgb(var(--color-yellow-500));
+    color: rgb(var(--color-yellow-500));
+    box-shadow: inset 0 0 0 1px rgb(var(--color-yellow-500));
+}
+
+.icon-button {
+    display: grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid rgb(var(--color-gray-700));
+    border-radius: 999px;
+}
+
+body.theme-light nav {
+    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+}
+
+body.theme-light .shadow-lg,
+body.theme-light .shadow-2xl {
+    box-shadow: 0 12px 35px rgba(15, 23, 42, 0.09) !important;
+}
+
+body.theme-light .bg-black {
+    background-color: #f8fafc !important;
+}
+
+body.theme-light .text-yellow-400 {
+    color: #b45309 !important;
+}
+
+body.theme-light .slot-maintenance {
+    background-color: #fff7ed;
+    background-image: repeating-linear-gradient(45deg, #fff7ed, #fff7ed 10px, #fde68a 10px, #fde68a 20px);
+}
+
+body.theme-light #activity-log {
+    color: #334155;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ==== Blueprint Parking Slots ==== */
+.slot-blueprint {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    min-height: 80px;
+    background-color: rgb(var(--color-slate-800) / 0.3) !important;
+    border: 2px solid rgba(59, 130, 246, 0.4) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slot-left {
+    border-right: 2px dashed rgba(59, 130, 246, 0.15) !important;
+    border-top-left-radius: 0.75rem;
+    border-bottom-left-radius: 0.75rem;
+}
+
+.slot-right {
+    border-left: 2px dashed rgba(59, 130, 246, 0.15) !important;
+    border-top-right-radius: 0.75rem;
+    border-bottom-right-radius: 0.75rem;
+}
+
+/* Hover effects matching standard slot list but with custom glow */
+.slot-blueprint:hover {
+    transform: scale(1.02);
+    z-index: 10;
+}
+
+.slot-blueprint.slot-available {
+    background-color: rgba(34, 197, 94, 0.03) !important;
+    border-color: rgba(34, 197, 94, 0.4) !important;
+}
+.slot-blueprint.slot-available:hover {
+    background-color: rgba(34, 197, 94, 0.1) !important;
+    border-color: rgba(34, 197, 94, 0.8) !important;
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.3) !important;
+}
+
+.slot-blueprint.slot-occupied {
+    background-color: rgba(239, 68, 68, 0.03) !important;
+    border-color: rgba(239, 68, 68, 0.4) !important;
+}
+.slot-blueprint.slot-occupied:hover {
+    background-color: rgba(239, 68, 68, 0.1) !important;
+    border-color: rgba(239, 68, 68, 0.8) !important;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.3) !important;
+}
+
+.slot-blueprint.slot-unverified {
+    background: linear-gradient(
+        90deg,
+        rgba(30, 41, 59, 0.3) 0%,
+        rgba(30, 41, 59, 0.3) 35%,
+        rgba(234, 179, 8, 0.08) 50%,
+        rgba(30, 41, 59, 0.3) 65%,
+        rgba(30, 41, 59, 0.3) 100%
+    ) !important;
+    background-size: 200% 100% !important;
+    animation: yellow-shimmer 3.5s infinite linear, yellow-glow 2s infinite ease-in-out !important;
+}
+
+.slot-blueprint.slot-unverified:hover {
+    background: rgba(234, 179, 8, 0.1) !important;
+    box-shadow: 0 0 15px rgba(234, 179, 8, 0.3) !important;
+    border-color: rgba(234, 179, 8, 0.8) !important;
+}
+
+.slot-blueprint.slot-maintenance {
+    border-color: rgba(234, 179, 8, 0.4) !important;
+    background-image: repeating-linear-gradient(45deg, rgba(30,41,59,0.5), rgba(30,41,59,0.5) 10px, rgba(234, 179, 8, 0.1) 10px, rgba(234, 179, 8, 0.1) 20px) !important;
+}

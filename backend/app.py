@@ -35,10 +35,10 @@ async def scan_plate(image: UploadFile = File(...)):
         detected_text = result["text"]
         
         if not detected_text:
-            return {"success": False, "message": "No valid plate detected", "plate": None, "bbox": result["bbox"]}
+            return {"success": False, "message": "No valid plate detected", "plate": None, "bbox": result["bbox"], "confidence": result["confidence"]}
 
         # Attempt to verify the plate via Firebase Service
-        updated = update_verified_plate(detected_text)
+        updated = update_verified_plate(detected_text) if result["confidence"] >= 45 else False
         message = "Match found and verified" if updated else "Plate detected but no unverified matches found"
 
         return {
@@ -46,6 +46,7 @@ async def scan_plate(image: UploadFile = File(...)):
             "message": message, 
             "plate": detected_text,
             "bbox": result["bbox"],
+            "confidence": result["confidence"],
             "database_updated": updated
         }
     except Exception as e:

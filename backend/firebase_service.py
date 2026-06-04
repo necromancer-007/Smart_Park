@@ -73,9 +73,9 @@ def update_verified_plate(scanned_plate: str) -> bool:
                 occupied_by = slot.get('occupiedBy', {})
                 if not occupied_by.get('verified', False):
                     # Check if the scanned plate is present in the recorded vehicleNo
-                    recorded_no = occupied_by.get('vehicleNo', '').upper().replace(" ", "")
+                    recorded_no = ''.join(char for char in occupied_by.get('vehicleNo', '').upper() if char.isalnum())
                     # simple partial or full match logic
-                    if scanned_plate in recorded_no or recorded_no in scanned_plate:
+                    if len(recorded_no) >= 6 and scanned_plate == recorded_no:
                         slot['occupiedBy']['verified'] = True
                         match_found = True
                         

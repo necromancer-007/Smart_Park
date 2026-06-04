@@ -26,9 +26,11 @@ cd ..
 
 # Start frontend static server
 echo "Starting Frontend Server..."
-# Frontend files are in the root directory
+# Frontend files are in the frontend directory
+cd frontend
 python3 -m http.server 3000 &
 FRONTEND_PID=$!
+cd ..
 
 echo "================================================="
 echo " System is Running!"

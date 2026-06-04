@@ -1,141 +1,165 @@
-import cv2
-import pytesseract
-import numpy as np
-import re
-import platform
 import os
+import platform
+import re
 
-# macOS Homebrew support: Ensure tesseract is found even if not in PATH
+import cv2
+import numpy as np
+import pytesseract
+from pytesseract import Output
+
+
 if platform.system() == "Darwin":
-    common_tesseract_paths = [
-        "/opt/homebrew/bin/tesseract",  # Apple Silicon
-        "/usr/local/bin/tesseract",     # Intel
-    ]
-    for path in common_tesseract_paths:
+    for path in ("/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract"):
         if os.path.exists(path):
             pytesseract.pytesseract.tesseract_cmd = path
             break
 
+
+PLATE_CONFIGS = (
+    "--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    "--oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    "--oem 3 --psm 13 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+)
+
+
 def clean_plate_text(text: str) -> str:
-    """
-    Cleans the raw OCR output to extract alphanumeric characters.
-    """
-    # Remove all non-alphanumeric characters
-    cleaned = re.sub(r'[^A-Z0-9]', '', text.upper())
-    return cleaned
+    return re.sub(r"[^A-Z0-9]", "", text.upper())
+
+
+def plate_pattern_score(text: str) -> int:
+    """Favor realistic registration numbers and reject short OCR noise."""
+    if not 6 <= len(text) <= 12:
+        return -40
+
+    score = 10
+    letters = sum(char.isalpha() for char in text)
+    digits = sum(char.isdigit() for char in text)
+    if letters >= 2 and digits >= 2:
+        score += 20
+    if re.fullmatch(r"[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{3,4}", text):
+        score += 45
+    if len(set(text)) <= 2:
+        score -= 30
+    return score
+
 
 def detect_bbox(img):
-    """
-    Expert-level License Plate Detection using Sobel gradients and Morphological ops.
-    Extremely reliable at a distance.
-    """
     try:
-        # Resize for consistent processing speed
-        h, w = img.shape[:2]
-        ratio = 600.0 / w
-        dim = (600, int(h * ratio))
-        resized = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
+        height, width = img.shape[:2]
+        ratio = min(1.0, 900.0 / width)
+        resized = cv2.resize(img, (int(width * ratio), int(height * ratio)), interpolation=cv2.INTER_AREA)
         gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+        gray = cv2.bilateralFilter(gray, 9, 35, 35)
 
-        # 1. Morphological Blackhat: Highlights dark objects (Characters) on light backgrounds (Plates)
-        rectKernel = cv2.getStructuringElement(cv2.MORPH_RECT, (13, 5))
-        blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, rectKernel)
+        blackhat_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 5))
+        blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, blackhat_kernel)
+        grad_x = cv2.Sobel(blackhat, cv2.CV_32F, 1, 0, ksize=-1)
+        grad_x = np.absolute(grad_x)
+        max_value = np.max(grad_x)
+        if max_value == 0:
+            return None
+        grad_x = (255 * (grad_x / max_value)).astype("uint8")
+        grad_x = cv2.GaussianBlur(grad_x, (5, 5), 0)
+        grad_x = cv2.morphologyEx(grad_x, cv2.MORPH_CLOSE, blackhat_kernel)
+        threshold = cv2.threshold(grad_x, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+        threshold = cv2.morphologyEx(
+            threshold,
+            cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3)),
+            iterations=2,
+        )
 
-        # 2. Sobel Gradients: Finding regions with high vertical edge density (common for plate numbers)
-        gradX = cv2.Sobel(blackhat, ddepth=cv2.CV_32F, dx=1, dy=0, ksize=-1)
-        gradX = np.absolute(gradX)
-        (minVal, maxVal) = (np.min(gradX), np.max(gradX))
-        gradX = 255 * ((gradX - minVal) / (maxVal - minVal))
-        gradX = gradX.astype("uint8")
+        contours, _ = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        candidates = []
+        for contour in contours:
+            x, y, box_width, box_height = cv2.boundingRect(contour)
+            aspect_ratio = box_width / float(max(box_height, 1))
+            area = box_width * box_height
+            if 1.8 < aspect_ratio < 6.5 and box_width > 55 and box_height > 15:
+                candidates.append((area, x, y, box_width, box_height))
 
-        # 3. Blur and Closing: Group character regions together
-        gradX = cv2.GaussianBlur(gradX, (5, 5), 0)
-        gradX = cv2.morphologyEx(gradX, cv2.MORPH_CLOSE, rectKernel)
-        thresh = cv2.threshold(gradX, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+        if not candidates:
+            return None
 
-        # 4. Clean up small noise with erosions/dilations
-        thresh = cv2.erode(thresh, None, iterations=2)
-        thresh = cv2.dilate(thresh, None, iterations=2)
-
-        # 5. Find Contours and Filter by Aspect Ratio and Density
-        cnts, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:10]
-
-        best_bbox = None
-        for c in cnts:
-            (x, y, v_w, v_h) = cv2.boundingRect(c)
-            aspect_ratio = v_w / float(v_h)
-            
-            # Typical Plate Ratios are between 2.0 and 5.0
-            if 2.0 < aspect_ratio < 5.5:
-                # Basic area threshold (scaled to resized image)
-                if v_w > 40 and v_h > 15:
-                    # Return scaled back to original image size
-                    inv_ratio = 1.0 / ratio
-                    best_bbox = {
-                        "x": int(x * inv_ratio),
-                        "y": int(y * inv_ratio),
-                        "w": int(v_w * inv_ratio),
-                        "h": int(v_h * inv_ratio)
-                    }
-                    break
-
-        return best_bbox
-    except Exception as e:
-        print(f"Detailed Detection Error: {e}")
+        _, x, y, box_width, box_height = max(candidates)
+        inverse_ratio = 1.0 / ratio
+        return {
+            "x": int(x * inverse_ratio),
+            "y": int(y * inverse_ratio),
+            "w": int(box_width * inverse_ratio),
+            "h": int(box_height * inverse_ratio),
+        }
+    except Exception as error:
+        print(f"Plate detection error: {error}")
         return None
 
+
+def build_ocr_variants(gray):
+    target_width = 700
+    scale = target_width / float(max(gray.shape[1], 1))
+    resized = cv2.resize(gray, (target_width, max(80, int(gray.shape[0] * scale))), interpolation=cv2.INTER_CUBIC)
+    denoised = cv2.bilateralFilter(resized, 9, 45, 45)
+    sharpened = cv2.filter2D(denoised, -1, np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]))
+    otsu = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    adaptive = cv2.adaptiveThreshold(
+        sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 7
+    )
+    return (sharpened, otsu, cv2.bitwise_not(otsu), adaptive)
+
+
+def read_candidate(image, config):
+    data = pytesseract.image_to_data(image, config=config, output_type=Output.DICT)
+    words = []
+    confidences = []
+    for raw_text, raw_confidence in zip(data["text"], data["conf"]):
+        text = clean_plate_text(raw_text)
+        try:
+            confidence = float(raw_confidence)
+        except (TypeError, ValueError):
+            confidence = -1
+        if text and confidence >= 0:
+            words.append(text)
+            confidences.append(confidence)
+
+    candidate = clean_plate_text("".join(words))
+    confidence = sum(confidences) / len(confidences) if confidences else 0
+    return candidate, confidence
+
+
 def process_image(image_bytes: bytes) -> dict:
-    """
-    Expert vision pipeline: Detect -> Crop -> Normalize -> OCR
-    """
     try:
-        np_arr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        image = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            return {"text": "", "bbox": None, "confidence": 0}
 
-        if img is None:
-            return {"text": "", "bbox": None}
-
-        # 1. Advanced Detection
-        bbox = detect_bbox(img)
-
-        # 2. Smart OCR Target Extraction
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
+        bbox = detect_bbox(image)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         if bbox:
-            # Padding for OCR context
-            p = 8
-            y1, y2 = max(0, bbox["y"] - p), min(img.shape[0], bbox["y"] + bbox["h"] + p)
-            x1, x2 = max(0, bbox["x"] - p), min(img.shape[1], bbox["x"] + bbox["w"] + p)
+            padding_x = max(10, int(bbox["w"] * 0.08))
+            padding_y = max(8, int(bbox["h"] * 0.25))
+            x1 = max(0, bbox["x"] - padding_x)
+            y1 = max(0, bbox["y"] - padding_y)
+            x2 = min(image.shape[1], bbox["x"] + bbox["w"] + padding_x)
+            y2 = min(image.shape[0], bbox["y"] + bbox["h"] + padding_y)
             roi = gray[y1:y2, x1:x2]
-            
-            # Rescale ROI to standard size (300px width) for Tesseract consistency
-            roi_w = 400
-            roi_h = int(roi.shape[0] * (roi_w / float(roi.shape[1])))
-            roi = cv2.resize(roi, (roi_w, roi_h), interpolation=cv2.INTER_CUBIC)
-            
-            # Sharpen and Threshold specialized for text
-            roi = cv2.bilateralFilter(roi, 11, 17, 17)
-            _, search_img = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         else:
-            # Fallback (whole frame) - low probability of success but worth the try
-            search_img = cv2.threshold(cv2.bilateralFilter(gray, 11, 17, 17), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+            roi = gray
 
-        # Tesseract execution with whitelist for ONLY plates (optional but helpful)
-        custom_config = r'--oem 3 --psm 6'
-        raw_text = pytesseract.image_to_string(search_img, config=custom_config)
-        
-        detected_text = clean_plate_text(raw_text)
-        
-        # Log detected bbox found but OCR failed
-        if not detected_text and bbox:
-             # Try one more aggressive threshold if first failed
-             alt_thresh = cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-             raw_text = pytesseract.image_to_string(alt_thresh, config=r'--oem 3 --psm 7')
-             detected_text = clean_plate_text(raw_text)
+        scored_candidates = []
+        for variant in build_ocr_variants(roi):
+            for config in PLATE_CONFIGS:
+                candidate, confidence = read_candidate(variant, config)
+                score = confidence + plate_pattern_score(candidate)
+                if candidate:
+                    scored_candidates.append((score, confidence, candidate))
 
-        return {"text": detected_text, "bbox": bbox}
+        if not scored_candidates:
+            return {"text": "", "bbox": bbox, "confidence": 0}
 
-    except Exception as e:
-        print(f"Final OCR Pipeline Error: {e}")
-        return {"text": "", "bbox": None}
+        _, confidence, text = max(scored_candidates)
+        if plate_pattern_score(text) < 0:
+            return {"text": "", "bbox": bbox, "confidence": round(confidence, 1)}
+        return {"text": text, "bbox": bbox, "confidence": round(confidence, 1)}
+    except Exception as error:
+        print(f"OCR pipeline error: {error}")
+        return {"text": "", "bbox": None, "confidence": 0}
