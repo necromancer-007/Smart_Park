@@ -35,6 +35,16 @@
         window.firebaseInitialized = false;
 
         // --- Configuration Handling ---
+        const DEFAULT_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyDM9_YTLDzv161OiwZNH7G7vNXkiq6L0fI",
+            authDomain: "smart-parking-d6859.firebaseapp.com",
+            projectId: "smart-parking-d6859",
+            storageBucket: "smart-parking-d6859.firebasestorage.app",
+            messagingSenderId: "92054908683",
+            appId: "1:92054908683:web:92e854ccbaab2f06d53c0e",
+            measurementId: "G-PZ2P48NGGW"
+        };
+
         function getFirebaseConfig() {
             const local = localStorage.getItem('parking_firebase_config');
             if (local) {
@@ -43,7 +53,7 @@
             if (typeof __firebase_config !== 'undefined') {
                 try { return JSON.parse(__firebase_config); } catch (e) { }
             }
-            return null;
+            return DEFAULT_FIREBASE_CONFIG;
         }
 
         const firebaseConfig = getFirebaseConfig();

@@ -19,6 +19,30 @@ app.add_middleware(
 def read_root():
     return {"status": "ok", "message": "Smart Parking API is running"}
 
+@app.get("/debug")
+def debug_info():
+    import platform
+    import pytesseract
+    import shutil
+    tesseract_in_path = shutil.which("tesseract")
+    tesseract_cmd_val = pytesseract.pytesseract.tesseract_cmd
+    
+    version = None
+    error = None
+    try:
+        version = str(pytesseract.get_tesseract_version())
+    except Exception as e:
+        error = str(e)
+        
+    return {
+        "platform": platform.system(),
+        "platform_release": platform.release(),
+        "tesseract_in_path": tesseract_in_path,
+        "tesseract_cmd_configured": tesseract_cmd_val,
+        "tesseract_version": version,
+        "tesseract_error": error
+    }
+
 @app.post("/scan")
 async def scan_plate(image: UploadFile = File(...)):
     """

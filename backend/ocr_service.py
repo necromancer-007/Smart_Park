@@ -13,6 +13,11 @@ if platform.system() == "Darwin":
         if os.path.exists(path):
             pytesseract.pytesseract.tesseract_cmd = path
             break
+elif platform.system() == "Linux":
+    for path in ("/usr/bin/tesseract", "/usr/local/bin/tesseract"):
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            break
 
 
 PLATE_CONFIGS = (
@@ -134,6 +139,10 @@ def process_image(image_bytes: bytes) -> dict:
 
         bbox = detect_bbox(image)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        scored_candidates = []
+        
+        # 1. Try OCR on the cropped ROI if bounding box is found
         if bbox:
             padding_x = max(10, int(bbox["w"] * 0.08))
             padding_y = max(8, int(bbox["h"] * 0.25))
@@ -142,16 +151,29 @@ def process_image(image_bytes: bytes) -> dict:
             x2 = min(image.shape[1], bbox["x"] + bbox["w"] + padding_x)
             y2 = min(image.shape[0], bbox["y"] + bbox["h"] + padding_y)
             roi = gray[y1:y2, x1:x2]
-        else:
-            roi = gray
-
-        scored_candidates = []
-        for variant in build_ocr_variants(roi):
-            for config in PLATE_CONFIGS:
-                candidate, confidence = read_candidate(variant, config)
-                score = confidence + plate_pattern_score(candidate)
-                if candidate:
-                    scored_candidates.append((score, confidence, candidate))
+            
+            for variant in build_ocr_variants(roi):
+                for config in PLATE_CONFIGS:
+                    candidate, confidence = read_candidate(variant, config)
+                    score = confidence + plate_pattern_score(candidate)
+                    if candidate:
+                        scored_candidates.append((score, confidence, candidate))
+        
+        # 2. Check if we got a valid high-scoring candidate from the ROI
+        best_candidate_valid = False
+        if scored_candidates:
+            _, confidence, text = max(scored_candidates)
+            if plate_pattern_score(text) >= 0:
+                best_candidate_valid = True
+        
+        # 3. If no bbox was detected, or ROI OCR failed to find a valid license plate pattern, run on the full image
+        if not best_candidate_valid:
+            for variant in build_ocr_variants(gray):
+                for config in PLATE_CONFIGS:
+                    candidate, confidence = read_candidate(variant, config)
+                    score = confidence + plate_pattern_score(candidate)
+                    if candidate:
+                        scored_candidates.append((score, confidence, candidate))
 
         if not scored_candidates:
             return {"text": "", "bbox": bbox, "confidence": 0}
