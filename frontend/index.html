@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Parking System</title>
+    <link rel="icon" type="image/png" href="assets/images/logo.png">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -167,8 +168,8 @@
         <div class="flex items-center gap-3 cursor-pointer group"
             onclick="if(state.currentUser) switchView(state.view)">
             <div
-                class="bg-yellow-400 p-2 rounded-lg shadow-lg shadow-yellow-400/20 group-hover:bg-yellow-300 transition-colors">
-                <i data-lucide="square-parking" class="text-black w-6 h-6"></i>
+                class="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-yellow-400/10 group-hover:scale-105 transition-transform flex items-center justify-center bg-slate-900 border border-gray-700/50">
+                <img src="assets/images/logo.png" alt="SmartPark Logo" class="w-8 h-8 object-contain">
             </div>
             <div class="flex flex-col">
                 <span class="font-black text-xl tracking-tight text-white uppercase italic leading-none">Smart<span
