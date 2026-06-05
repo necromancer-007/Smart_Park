@@ -1,6 +1,6 @@
 fastapi==0.110.0
 uvicorn==0.29.0
 pytesseract>=0.3.13
-opencv-python>=4.11.0.86
+opencv-python-headless>=4.11.0.86
 firebase-admin==6.5.0
 python-multipart==0.0.9

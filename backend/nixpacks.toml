@@ -1,0 +1,3 @@
+# Nixpacks configuration to install system packages on Render native runtimes
+[phases.setup]
+aptPkgs = ["tesseract-ocr"]

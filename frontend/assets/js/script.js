@@ -11,9 +11,8 @@ let authObserverAttached = false;
 let scanCandidates = [];
 let isLoginInProgress = false;
 
-// Backend API URL (Dynamically targets the same host on port 8000, or localhost if opened directly)
-// Backend API URL (Hardcoded to local machine to work from GitHub Pages)
-const BACKEND_URL = 'https://smart-park-backend-kphl.onrender.com';
+// Backend API URL (Loaded dynamically from localStorage with fallback)
+const BACKEND_URL = localStorage.getItem('parking_backend_url') || 'https://smart-park-backend-kphl.onrender.com';
 
 let state = {
     currentUser: null,
@@ -49,6 +48,10 @@ function openConfigModal() {
     document.getElementById('config-modal').classList.remove('hidden');
     const current = localStorage.getItem('parking_firebase_config');
     if (current) document.getElementById('config-input').value = current;
+    
+    const currentBackend = localStorage.getItem('parking_backend_url') || 'https://smart-park-backend-kphl.onrender.com';
+    const backendInput = document.getElementById('backend-url-input');
+    if (backendInput) backendInput.value = currentBackend;
 }
 
 // --- Realtime DB Logic ---
@@ -1330,49 +1333,63 @@ async function runDetectionLoop() {
 
         // Capture frame
         c.toBlob(async (blob) => {
-            if (!blob || !isDetecting) return;
+            if (!blob || !isDetecting) {
+                if (isDetecting) detectionTimeout = setTimeout(runDetectionLoop, 200);
+                return;
+            }
 
             // Clear previous before drawing new ones
-            if (isDetecting) ctx.clearRect(0, 0, overlay.width, overlay.height);
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
 
             const formData = new FormData();
             formData.append('image', blob, 'detect.jpg');
 
             try {
                 const res = await fetch(`${BACKEND_URL}/detect`, { method: 'POST', body: formData });
+                if (!res.ok) throw new Error(`Status ${res.status}`);
                 const { bbox } = await res.json();
 
-                ctx.clearRect(0, 0, overlay.width, overlay.height);
-                if (bbox && isDetecting) {
-                    // Map video coordinates to overlay coordinates
-                    const scaleX = overlay.width / v.videoWidth;
-                    const scaleY = overlay.height / v.videoHeight;
+                if (isDetecting) {
+                    ctx.clearRect(0, 0, overlay.width, overlay.height);
+                    if (bbox) {
+                        // Map video coordinates to overlay coordinates
+                        const scaleX = overlay.width / v.videoWidth;
+                        const scaleY = overlay.height / v.videoHeight;
 
-                    ctx.strokeStyle = '#22c55e'; // green-500
-                    ctx.lineWidth = 4;
-                    ctx.strokeRect(bbox.x * scaleX, bbox.y * scaleY, bbox.w * scaleX, bbox.h * scaleY);
+                        ctx.strokeStyle = '#22c55e'; // green-500
+                        ctx.lineWidth = 4;
+                        ctx.strokeRect(bbox.x * scaleX, bbox.y * scaleY, bbox.w * scaleX, bbox.h * scaleY);
 
-                    // Add subtle glow
-                    ctx.shadowColor = 'rgba(34, 197, 94, 0.5)';
-                    ctx.shadowBlur = 15;
-                    ctx.stroke();
+                        // Add subtle glow
+                        ctx.shadowColor = 'rgba(34, 197, 94, 0.5)';
+                        ctx.shadowBlur = 15;
+                        ctx.stroke();
 
-                    // Auto-scan logic: Trigger a full scan if a bbox is found, max once every 2.5 seconds
-                    if (!window.isScanningLocked) {
-                        if (!window.lastAutoScan || (Date.now() - window.lastAutoScan > 2500)) {
-                            window.lastAutoScan = Date.now();
-                            window.isScanningLocked = true;
-                            performScan(true).finally(() => { 
-                                window.isScanningLocked = false; 
-                            });
+                        // Auto-scan logic: Trigger a full scan if a bbox is found, max once every 2.5 seconds
+                        if (!window.isScanningLocked) {
+                            if (!window.lastAutoScan || (Date.now() - window.lastAutoScan > 2500)) {
+                                window.lastAutoScan = Date.now();
+                                window.isScanningLocked = true;
+                                performScan(true).finally(() => { 
+                                    window.isScanningLocked = false; 
+                                });
+                            }
                         }
                     }
                 }
-            } catch (e) { console.error("Detection error"); }
-        }, 'image/jpeg', 0.5); // Low quality for speed
+            } catch (e) { 
+                console.error("Detection error:", e); 
+            } finally {
+                // Schedule next frame ONLY after this request is completely finished!
+                if (isDetecting) {
+                    detectionTimeout = setTimeout(runDetectionLoop, 200);
+                }
+            }
+        }, 'image/jpeg', 0.4); // Low quality for speed
+    } else {
+        // Video not ready, try again in 200ms
+        detectionTimeout = setTimeout(runDetectionLoop, 200);
     }
-
-    detectionTimeout = setTimeout(runDetectionLoop, 200); // 5 FPS
 }
 
 // OCR Processing via FastAPI Backend
@@ -1535,11 +1552,47 @@ function switchAdminTab(tabName) {
         renderLog();
     } else if (tabName === 'camera') {
         renderLog();
+        checkBackendStatus();
     } else if (tabName === 'analytics') {
         renderAnalyticsDashboard();
     }
     
     if (window.lucide) lucide.createIcons();
+}
+
+async function checkBackendStatus() {
+    const badge = document.getElementById('backend-status-badge');
+    if (!badge) return;
+
+    badge.className = "ml-2 px-2 py-0.5 rounded text-[10px] font-mono bg-slate-950 text-yellow-500 border border-yellow-500/20 animate-pulse";
+    badge.innerText = "Connecting...";
+
+    try {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
+        const res = await fetch(`${BACKEND_URL}/debug`, { signal: controller.signal });
+        clearTimeout(id);
+
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (data.tesseract_version) {
+            badge.className = "ml-2 px-2 py-0.5 rounded text-[10px] font-mono bg-green-950/40 text-green-400 border border-green-500/20";
+            badge.innerText = "OCR API Online";
+        } else {
+            badge.className = "ml-2 px-2 py-0.5 rounded text-[10px] font-mono bg-yellow-950/40 text-yellow-400 border border-yellow-500/20";
+            badge.innerText = "OCR API Online (Tesseract Missing)";
+            showToast("Tesseract is not installed on the backend!", "warning");
+        }
+    } catch (err) {
+        badge.className = "ml-2 px-2 py-0.5 rounded text-[10px] font-mono bg-red-950/40 text-red-400 border border-red-500/20";
+        badge.innerText = "API Offline";
+        console.error("Backend check failed:", err);
+        showToast("Backend connection failed. Check API URL.", "error");
+    }
 }
 
 function parseHistoryItem(item) {

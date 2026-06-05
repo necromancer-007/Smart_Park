@@ -23,7 +23,6 @@ elif platform.system() == "Linux":
 PLATE_CONFIGS = (
     "--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     "--oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-    "--oem 3 --psm 13 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
 )
 
 
@@ -106,10 +105,7 @@ def build_ocr_variants(gray):
     denoised = cv2.bilateralFilter(resized, 9, 45, 45)
     sharpened = cv2.filter2D(denoised, -1, np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]))
     otsu = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-    adaptive = cv2.adaptiveThreshold(
-        sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 7
-    )
-    return (sharpened, otsu, cv2.bitwise_not(otsu), adaptive)
+    return (sharpened, otsu, cv2.bitwise_not(otsu))
 
 
 def read_candidate(image, config):
@@ -152,12 +148,17 @@ def process_image(image_bytes: bytes) -> dict:
             y2 = min(image.shape[0], bbox["y"] + bbox["h"] + padding_y)
             roi = gray[y1:y2, x1:x2]
             
-            for variant in build_ocr_variants(roi):
-                for config in PLATE_CONFIGS:
-                    candidate, confidence = read_candidate(variant, config)
-                    score = confidence + plate_pattern_score(candidate)
-                    if candidate:
-                        scored_candidates.append((score, confidence, candidate))
+            roi_variants = build_ocr_variants(roi)
+            # Sharpened variant gets both configs
+            for config in PLATE_CONFIGS:
+                candidate, confidence = read_candidate(roi_variants[0], config)
+                if candidate:
+                    scored_candidates.append((confidence + plate_pattern_score(candidate), confidence, candidate))
+            # Binary thresholds only get PSM 7
+            for var in roi_variants[1:]:
+                candidate, confidence = read_candidate(var, PLATE_CONFIGS[0])
+                if candidate:
+                    scored_candidates.append((confidence + plate_pattern_score(candidate), confidence, candidate))
         
         # 2. Check if we got a valid high-scoring candidate from the ROI
         best_candidate_valid = False
@@ -168,12 +169,15 @@ def process_image(image_bytes: bytes) -> dict:
         
         # 3. If no bbox was detected, or ROI OCR failed to find a valid license plate pattern, run on the full image
         if not best_candidate_valid:
-            for variant in build_ocr_variants(gray):
-                for config in PLATE_CONFIGS:
-                    candidate, confidence = read_candidate(variant, config)
-                    score = confidence + plate_pattern_score(candidate)
-                    if candidate:
-                        scored_candidates.append((score, confidence, candidate))
+            full_variants = build_ocr_variants(gray)
+            for config in PLATE_CONFIGS:
+                candidate, confidence = read_candidate(full_variants[0], config)
+                if candidate:
+                    scored_candidates.append((confidence + plate_pattern_score(candidate), confidence, candidate))
+            for var in full_variants[1:]:
+                candidate, confidence = read_candidate(var, PLATE_CONFIGS[0])
+                if candidate:
+                    scored_candidates.append((confidence + plate_pattern_score(candidate), confidence, candidate))
 
         if not scored_candidates:
             return {"text": "", "bbox": bbox, "confidence": 0}
