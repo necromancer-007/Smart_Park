@@ -807,10 +807,17 @@ function createSlotElement(slot, position = 'standard', row = 1) {
         iconHtml = `<i data-lucide="cone" class="w-5 h-5 mb-1 text-yellow-500 drop-shadow-md"></i><span class='text-yellow-500 font-mono text-[9px] bg-slate-900 px-1 rounded border border-gray-700'>MAINTENANCE</span>`;
     } else if (slot.status === 'occupied') {
         const isVerified = !!slot.occupiedBy?.verified;
+        const isOwner = state.view === 'user' && slot.occupiedBy?.parkedByUid === state.currentUser?.uid;
+        
         colorClass = isVerified ? "slot-occupied" : "slot-occupied slot-unverified";
+        if (isOwner) {
+            colorClass += " ring-2 ring-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)]";
+        }
+        
         const verified = isVerified 
-            ? `<div class="absolute top-1 right-1 text-green-400"><i data-lucide="shield-check" class="w-3 h-3"></i></div>` 
-            : `<div class="absolute top-1 right-1 text-yellow-400"><i data-lucide="shield-alert" class="w-3 h-3 animate-pulse"></i></div>`;
+            ? `<div class="absolute top-1 right-1 text-green-400 flex items-center gap-1">${isOwner ? '<span class="text-[8px] font-bold font-mono bg-yellow-500/20 text-yellow-400 px-1 rounded border border-yellow-500/30">YOURS</span>' : ''}<i data-lucide="shield-check" class="w-3 h-3"></i></div>` 
+            : `<div class="absolute top-1 right-1 text-yellow-400 flex items-center gap-1">${isOwner ? '<span class="text-[8px] font-bold font-mono bg-yellow-500/20 text-yellow-400 px-1 rounded border border-yellow-500/30">YOURS</span>' : ''}<i data-lucide="shield-alert" class="w-3 h-3 animate-pulse"></i></div>`;
+        
         iconHtml = `${verified}<i data-lucide="${slot.occupiedBy?.type === 'bike' ? 'bike' : 'car-front'}" class="w-6 h-6 mb-1 ${isVerified ? 'text-red-500' : 'text-yellow-500'}"></i><span class="text-[9px] font-bold font-mono text-white tracking-wider bg-slate-900 px-1.5 py-0.5 rounded border border-gray-700">${slot.occupiedBy?.vehicleNo}</span>`;
     } else {
         colorClass = "slot-available group";
@@ -838,7 +845,14 @@ function handleSlotClick(slot) {
     state.selectedSlot = slot.id;
     if (state.view === 'user') {
         if (slot.status === 'available') openModal('user-book');
-        else if (slot.status === 'occupied') openModal('user-pay', slot);
+        else if (slot.status === 'occupied') {
+            const parkedByUid = slot.occupiedBy?.parkedByUid;
+            if (parkedByUid && parkedByUid !== state.currentUser?.uid) {
+                showToast('Access Denied: Only the driver who booked this slot can checkout.', 'error');
+            } else {
+                openModal('user-pay', slot);
+            }
+        }
     } else if (state.view === 'admin') {
         if (slot.status === 'available') openModal('admin-manage-empty', slot);
         else if (slot.status === 'maintenance') toggleMaintenance(slot.id);
@@ -886,7 +900,72 @@ function openModal(type, data = null) {
     } else if (type === 'emergency-form') {
         html = `${header('Override')}<div class="p-6 space-y-4"><input type="text" id="e-vNo" placeholder="VIP ID" class="w-full bg-slate-950 text-white px-4 py-3 rounded-xl border border-gray-700 uppercase font-mono"><button onclick="confirmEmergencyBook()" class="w-full bg-red-600 hover:bg-red-500 text-[#fff] font-bold py-3 rounded-xl">Book</button></div>`;
     } else if (type === 'admin-details') {
-        html = `${header('Details')}<div class="p-6 text-center"><h4 class="text-3xl font-black text-white font-mono">${data.occupiedBy.vehicleNo}</h4></div>`;
+        const start = new Date(data.occupiedBy.startTime);
+        const durationMs = new Date() - start;
+        const durationHrs = Math.max(1, Math.ceil(durationMs / 36e5));
+        const rate = data.occupiedBy.type === 'car' ? RATES.car : RATES.bike;
+        const totalCost = durationHrs * rate;
+        
+        // Format elapsed duration
+        const mins = Math.floor((durationMs / 60000) % 60);
+        const hrs = Math.floor(durationMs / 36e05);
+        let durationStr = "";
+        if (hrs > 0) {
+            durationStr += `${hrs}h ${mins}m`;
+        } else {
+            durationStr += `${mins}m`;
+        }
+        if (durationMs < 60000) durationStr = "Just now";
+
+        const formattedStart = start.toLocaleString();
+        const driverName = data.occupiedBy.parkedByName || 'OCR Scanning / Auto-Book';
+        const driverEmail = data.occupiedBy.parkedByEmail || 'N/A';
+        const isVerified = !!data.occupiedBy.verified;
+
+        html = `${header(`Slot ${String(data.id).padStart(2, '0')} Details`)}
+            <div class="p-6 space-y-5">
+                <!-- License Plate Visual -->
+                <div class="flex flex-col items-center justify-center p-4 bg-slate-950 rounded-xl border border-gray-700 relative overflow-hidden">
+                    <div class="absolute top-1 right-2 text-[8px] font-mono text-gray-500 uppercase tracking-widest">VEHICLE PLATE</div>
+                    <div class="flex items-center gap-2 mt-2">
+                        <i data-lucide="${data.occupiedBy.type === 'bike' ? 'bike' : 'car-front'}" class="w-6 h-6 text-yellow-400"></i>
+                        <span class="text-2xl font-black text-white font-mono tracking-wider">${data.occupiedBy.vehicleNo}</span>
+                    </div>
+                    <div class="mt-2 text-[10px] uppercase tracking-wider font-bold flex items-center gap-1 ${isVerified ? 'text-green-400' : 'text-yellow-400'}">
+                        <i data-lucide="${isVerified ? 'shield-check' : 'shield-alert'}" class="w-3.5 h-3.5"></i>
+                        ${isVerified ? 'VERIFIED PLATE' : 'UNVERIFIED DETECTED'}
+                    </div>
+                </div>
+
+                <!-- Metadata List -->
+                <div class="space-y-3 font-mono text-xs text-white">
+                    <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
+                        <span class="text-gray-400 font-bold flex items-center gap-1"><i data-lucide="user" class="w-3.5 h-3.5 text-yellow-500"></i> DRIVER NAME</span>
+                        <span class="text-white font-bold">${driverName}</span>
+                    </div>
+                    <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
+                        <span class="text-gray-400 font-bold flex items-center gap-1"><i data-lucide="mail" class="w-3.5 h-3.5 text-yellow-500"></i> DRIVER EMAIL</span>
+                        <span class="text-white font-bold">${driverEmail}</span>
+                    </div>
+                    <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
+                        <span class="text-gray-400 font-bold flex items-center gap-1"><i data-lucide="clock" class="w-3.5 h-3.5 text-yellow-500"></i> PARKED TIME</span>
+                        <span class="text-white">${formattedStart}</span>
+                    </div>
+                    <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
+                        <span class="text-gray-400 font-bold flex items-center gap-1"><i data-lucide="timer" class="w-3.5 h-3.5 text-yellow-500"></i> DURATION</span>
+                        <span class="text-yellow-400 font-bold">${durationStr}</span>
+                    </div>
+                    <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
+                        <span class="text-gray-400 font-bold flex items-center gap-1"><i data-lucide="indian-rupee" class="w-3.5 h-3.5 text-yellow-500"></i> ACCRUED COST</span>
+                        <span class="text-green-400 font-bold text-sm">₹${totalCost} (₹${rate}/hr)</span>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <button onclick="adminForceCheckout(${data.id}, ${totalCost})" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl uppercase tracking-wider transition-colors flex justify-center items-center gap-2 shadow-lg shadow-red-900/30">
+                    <i data-lucide="log-out" class="w-4 h-4"></i> Release & Checkout (Admin Override)
+                </button>
+            </div>`;
     }
     document.getElementById('modal-content').innerHTML = html;
     if (window.lucide) lucide.createIcons();
@@ -912,7 +991,10 @@ function autoBookSlot() {
         vehicleNo: vNo,
         type: type,
         startTime: new Date().toISOString(),
-        verified: false
+        verified: false,
+        parkedByUid: state.currentUser?.uid || 'anonymous',
+        parkedByName: state.profile?.name || state.currentUser?.displayName || state.currentUser?.email?.split('@')[0] || 'Quick Driver',
+        parkedByEmail: state.currentUser?.email || 'N/A'
     });
 
     addLog(`AUTO-BOOK: Slot ${availableSlot.id} for ${vNo}`, 'user', { action: 'book', slotId: availableSlot.id, vehicleNo: vNo, vehicleType: type, building: availableSlot.building });
@@ -930,7 +1012,15 @@ function userPark() {
     const slot = state.slots.find(s => s.id === state.selectedSlot);
     const building = slot?.building || 'Building 1';
     
-    updateSlot(state.selectedSlot, 'occupied', { vehicleNo: vNo, type, startTime: new Date().toISOString(), verified: false });
+    updateSlot(state.selectedSlot, 'occupied', {
+        vehicleNo: vNo,
+        type,
+        startTime: new Date().toISOString(),
+        verified: false,
+        parkedByUid: state.currentUser?.uid || 'anonymous',
+        parkedByName: state.profile?.name || state.currentUser?.displayName || state.currentUser?.email?.split('@')[0] || 'Driver',
+        parkedByEmail: state.currentUser?.email || 'N/A'
+    });
     addLog(`PARK: ${vNo}`, 'user', { action: 'book', slotId: state.selectedSlot, vehicleNo: vNo, vehicleType: type, building });
     closeModal();
     showToast('Booked', 'success');
@@ -965,9 +1055,32 @@ function confirmEmergencyBook() {
     const slot = state.slots.find(s => s.id === state.selectedSlot);
     const building = slot?.building || 'Building 1';
     
-    updateSlot(state.selectedSlot, 'occupied', { vehicleNo: vNo, type: 'car', startTime: new Date().toISOString(), verified: true });
+    updateSlot(state.selectedSlot, 'occupied', {
+        vehicleNo: vNo,
+        type: 'car',
+        startTime: new Date().toISOString(),
+        verified: true,
+        parkedByUid: state.currentUser?.uid || 'admin_override',
+        parkedByName: 'System Override (' + (state.profile?.name || state.currentUser?.email?.split('@')[0] || 'Admin') + ')',
+        parkedByEmail: state.currentUser?.email || 'admin@smartpark.com'
+    });
     addLog(`OVERRIDE: Slot ${state.selectedSlot} for ${vNo}`, 'alert', { action: 'override', slotId: state.selectedSlot, vehicleNo: vNo, vehicleType: 'car', building });
     closeModal();
+}
+
+function adminForceCheckout(id, amt) {
+    if (!confirm("Are you sure you want to force checkout this vehicle and release the slot?")) return;
+    const slot = state.slots.find(s => s.id === id);
+    const vehicleNo = slot?.occupiedBy?.vehicleNo || '';
+    const vehicleType = slot?.occupiedBy?.type || 'car';
+    const building = slot?.building || 'Building 1';
+    
+    updateSlot(id, 'available', null);
+    state.revenue += amt;
+    addLog(`ADMIN CHECKOUT: Slot ${id} for ${vehicleNo} (₹${amt})`, 'alert', { action: 'pay', slotId: id, amount: amt, vehicleNo, vehicleType, building, paymentMethod: 'Admin Override' });
+    saveData();
+    closeModal();
+    showToast('Vehicle checked out by Admin', 'success');
 }
 
 function updateSlot(id, status, data) {
