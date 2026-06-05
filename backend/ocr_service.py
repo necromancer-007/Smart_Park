@@ -112,7 +112,12 @@ def build_ocr_variants(gray):
 
 
 def read_candidate(image, config):
-    data = pytesseract.image_to_data(image, config=config, output_type=Output.DICT)
+    try:
+        data = pytesseract.image_to_data(image, config=config, output_type=Output.DICT)
+    except Exception as error:
+        print(f"Tesseract OCR error in read_candidate: {error}")
+        return "", 0
+
     words = []
     confidences = []
     for raw_text, raw_confidence in zip(data["text"], data["conf"]):
