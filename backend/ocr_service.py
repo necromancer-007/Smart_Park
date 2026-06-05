@@ -47,7 +47,16 @@ def plate_pattern_score(text: str) -> int:
     return score
 
 
-def detect_bbox(img):
+def is_perfect_plate(text: str, confidence: float) -> bool:
+    score = plate_pattern_score(text)
+    if score >= 75 and confidence >= 50:
+        return True
+    if score >= 30 and confidence >= 75:
+        return True
+    return False
+
+
+def detect_candidates(img):
     try:
         height, width = img.shape[:2]
         ratio = min(1.0, 900.0 / width)
@@ -61,7 +70,7 @@ def detect_bbox(img):
         grad_x = np.absolute(grad_x)
         max_value = np.max(grad_x)
         if max_value == 0:
-            return None
+            return []
         grad_x = (255 * (grad_x / max_value)).astype("uint8")
         grad_x = cv2.GaussianBlur(grad_x, (5, 5), 0)
         grad_x = cv2.morphologyEx(grad_x, cv2.MORPH_CLOSE, blackhat_kernel)
@@ -74,28 +83,41 @@ def detect_bbox(img):
         )
 
         contours, _ = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        candidates = []
+        boxes = []
         for contour in contours:
             x, y, box_width, box_height = cv2.boundingRect(contour)
             aspect_ratio = box_width / float(max(box_height, 1))
             area = box_width * box_height
             if 1.8 < aspect_ratio < 6.5 and box_width > 55 and box_height > 15:
-                candidates.append((area, x, y, box_width, box_height))
+                # Prioritize aspect ratio closer to standard plate (approx 4.2)
+                ar_score = 1.0 / (1.0 + abs(aspect_ratio - 4.2))
+                score = area * ar_score
+                boxes.append((score, x, y, box_width, box_height))
 
-        if not candidates:
-            return None
+        if not boxes:
+            return []
 
-        _, x, y, box_width, box_height = max(candidates)
+        # Sort descending by score
+        boxes.sort(reverse=True, key=lambda val: val[0])
+        
+        top_boxes = []
         inverse_ratio = 1.0 / ratio
-        return {
-            "x": int(x * inverse_ratio),
-            "y": int(y * inverse_ratio),
-            "w": int(box_width * inverse_ratio),
-            "h": int(box_height * inverse_ratio),
-        }
+        for _, x, y, box_width, box_height in boxes[:3]:
+            top_boxes.append({
+                "x": int(x * inverse_ratio),
+                "y": int(y * inverse_ratio),
+                "w": int(box_width * inverse_ratio),
+                "h": int(box_height * inverse_ratio),
+            })
+        return top_boxes
     except Exception as error:
         print(f"Plate detection error: {error}")
-        return None
+        return []
+
+
+def detect_bbox(img):
+    candidates = detect_candidates(img)
+    return candidates[0] if candidates else None
 
 
 def build_ocr_variants(gray):
@@ -141,13 +163,14 @@ def process_image(image_bytes: bytes) -> dict:
         if image is None:
             return {"text": "", "bbox": None, "confidence": 0}
 
-        bbox = detect_bbox(image)
+        # 1. Detect up to 3 candidate bounding boxes sorted by score
+        bboxes = detect_candidates(image)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
         scored_candidates = []
         
-        # 1. Try OCR on the cropped ROI if bounding box is found
-        if bbox:
+        # 2. Try OCR on each cropped ROI
+        for idx, bbox in enumerate(bboxes):
             padding_x = max(10, int(bbox["w"] * 0.08))
             padding_y = max(8, int(bbox["h"] * 0.25))
             x1 = max(0, bbox["x"] - padding_x)
@@ -157,43 +180,83 @@ def process_image(image_bytes: bytes) -> dict:
             roi = gray[y1:y2, x1:x2]
             
             roi_variants = build_ocr_variants(roi)
-            # Sharpened variant gets both configs
-            for config in PLATE_CONFIGS:
-                candidate, confidence = read_candidate(roi_variants[0], config)
+            # Variants to try: 
+            # 0: sharpened (PSM 7), 1: otsu (PSM 7), 3: adaptive (PSM 7), 0: sharpened (PSM 8)
+            variants_to_try = [
+                (roi_variants[3], PLATE_CONFIGS[0]), # adaptive PSM 7
+                (roi_variants[0], PLATE_CONFIGS[0]), # sharpened PSM 7
+                (roi_variants[1], PLATE_CONFIGS[0]), # otsu PSM 7
+                (roi_variants[0], PLATE_CONFIGS[1]), # sharpened PSM 8
+            ]
+            
+            for var, config in variants_to_try:
+                candidate, confidence = read_candidate(var, config)
                 if candidate:
-                    scored_candidates.append((confidence + plate_pattern_score(candidate), confidence, candidate))
-            # Binary thresholds only get PSM 7
-            for var in roi_variants[1:]:
-                candidate, confidence = read_candidate(var, PLATE_CONFIGS[0])
-                if candidate:
-                    scored_candidates.append((confidence + plate_pattern_score(candidate), confidence, candidate))
-        
-        # 2. Check if we got a valid high-scoring candidate from the ROI
-        best_candidate_valid = False
+                    score = plate_pattern_score(candidate)
+                    scored_candidates.append((confidence + score, confidence, candidate, bbox))
+                    
+                    # Early exit check: if it's a very good plate match, return immediately!
+                    if is_perfect_plate(candidate, confidence):
+                        return {
+                            "text": candidate,
+                            "bbox": bbox,
+                            "confidence": round(confidence, 1)
+                        }
+
+        # 3. If ROI OCR failed to find a valid license plate pattern, run on the full image
+        # Check if we already have a decent candidate from ROIs before running full image
+        best_roi_candidate = None
         if scored_candidates:
-            _, confidence, text = max(scored_candidates)
+            best_roi_candidate = max(scored_candidates, key=lambda x: x[0])
+            
+        # Only run full image OCR if we don't have a positive pattern score candidate from ROI
+        run_full_image = True
+        if best_roi_candidate:
+            _, confidence, text, bbox = best_roi_candidate
             if plate_pattern_score(text) >= 0:
-                best_candidate_valid = True
-        
-        # 3. If no bbox was detected, or ROI OCR failed to find a valid license plate pattern, run on the full image
-        if not best_candidate_valid:
+                run_full_image = False
+
+        if run_full_image:
             full_variants = build_ocr_variants(gray)
-            for config in PLATE_CONFIGS:
-                candidate, confidence = read_candidate(full_variants[0], config)
+            # Use only Adaptive and Sharpened variants for full image (much faster and covers 95% of cases)
+            full_variants_to_try = [
+                (full_variants[3], PLATE_CONFIGS[0]), # adaptive PSM 7
+                (full_variants[0], PLATE_CONFIGS[0]), # sharpened PSM 7
+            ]
+            for var, config in full_variants_to_try:
+                candidate, confidence = read_candidate(var, config)
                 if candidate:
-                    scored_candidates.append((confidence + plate_pattern_score(candidate), confidence, candidate))
-            for var in full_variants[1:]:
-                candidate, confidence = read_candidate(var, PLATE_CONFIGS[0])
-                if candidate:
-                    scored_candidates.append((confidence + plate_pattern_score(candidate), confidence, candidate))
+                    score = plate_pattern_score(candidate)
+                    scored_candidates.append((confidence + score, confidence, candidate, None))
+                    
+                    if is_perfect_plate(candidate, confidence):
+                        # Use the best bbox from candidates as fallback visual bbox if available
+                        fallback_bbox = bboxes[0] if bboxes else None
+                        return {
+                            "text": candidate,
+                            "bbox": fallback_bbox,
+                            "confidence": round(confidence, 1)
+                        }
 
+        # 4. Return the best overall candidate
         if not scored_candidates:
-            return {"text": "", "bbox": bbox, "confidence": 0}
+            fallback_bbox = bboxes[0] if bboxes else None
+            return {"text": "", "bbox": fallback_bbox, "confidence": 0}
 
-        _, confidence, text = max(scored_candidates)
+        # Get highest scored candidate
+        _, confidence, text, bbox = max(scored_candidates, key=lambda x: x[0])
+        fallback_bbox = bbox if bbox else (bboxes[0] if bboxes else None)
+        
         if plate_pattern_score(text) < 0:
-            return {"text": "", "bbox": bbox, "confidence": round(confidence, 1)}
-        return {"text": text, "bbox": bbox, "confidence": round(confidence, 1)}
+            return {"text": "", "bbox": fallback_bbox, "confidence": round(confidence, 1)}
+            
+        return {"text": text, "bbox": fallback_bbox, "confidence": round(confidence, 1)}
     except Exception as error:
         print(f"OCR pipeline error: {error}")
+        # Return fallback bbox if we can
+        try:
+            if bboxes:
+                return {"text": "", "bbox": bboxes[0], "confidence": 0}
+        except:
+            pass
         return {"text": "", "bbox": None, "confidence": 0}
