@@ -571,7 +571,7 @@ async function saveSettings() {
         closeSettings();
         showToast('Settings saved', 'success');
         
-        // If driver, update preferred vehicle in fast track selector
+        // If driver, update preferred vehicle in quick book selector
         if (state.profile.role === 'driver') {
             const prefType = state.profile.prefVehicle || 'car';
             const radio = document.querySelector(`input[name="quickVType"][value="${prefType}"]`);
@@ -667,8 +667,8 @@ function renderSavedPlates() {
     if (!container) return;
     const plates = state.profile.plates || [];
     container.innerHTML = plates.map((plate, index) => plate
-        ? `<button class="saved-plate" onclick="useSavedPlate('${plate}')"><span>Vehicle ${index + 1}</span><strong>${plate}</strong></button>`
-        : `<button class="saved-plate empty" onclick="openSettings()"><span>Vehicle ${index + 1}</span><strong>Add plate</strong></button>`
+        ? `<button class="saved-plate w-[82%] sm:w-auto flex-shrink-0" onclick="useSavedPlate('${plate}')"><span>Vehicle ${index + 1}</span><strong>${plate}</strong></button>`
+        : `<button class="saved-plate empty w-[82%] sm:w-auto flex-shrink-0" onclick="openSettings()"><span>Vehicle ${index + 1}</span><strong>Add plate</strong></button>`
     ).join('');
 }
 
@@ -732,7 +732,7 @@ function renderSlots(containerId) {
 
     // If active building is Building 1, render the 3-column blueprint
     if (state.currentBuilding === 'Building 1') {
-        container.className = "grid grid-cols-[1fr_80px_1fr] gap-x-2 gap-y-3 w-full max-w-3xl mx-auto relative p-4 rounded-2xl border border-blue-500/20 bg-slate-950/20";
+        container.className = "grid grid-cols-[1fr_56px_1fr] sm:grid-cols-[1fr_80px_1fr] gap-x-1 sm:gap-x-2 gap-y-3 w-full max-w-3xl mx-auto relative p-2 sm:p-4 rounded-2xl border border-blue-500/20 bg-slate-950/20";
         
         // 1. Create the middle lane element
         const lane = document.createElement('div');

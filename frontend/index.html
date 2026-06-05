@@ -225,11 +225,11 @@
                             class="text-white font-bold" id="username-span">User</span></span>
                     <button onclick="openSettings()"
                         class="nav-action px-3 py-2 rounded-lg text-xs font-bold bg-slate-800 text-gray-400 border border-gray-700 hover:text-yellow-400 transition-all uppercase tracking-wider flex items-center gap-2">
-                        <i data-lucide="settings-2" class="w-3 h-3"></i> Settings
+                        <i data-lucide="settings-2" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Settings</span>
                     </button>
                     <button onclick="logout()"
                         class="px-4 py-2 rounded-lg text-xs font-bold bg-slate-800 text-red-400 border border-gray-700 hover:bg-red-900/20 hover:border-red-500/50 transition-all uppercase tracking-wider flex items-center gap-2">
-                        <i data-lucide="log-out" class="w-3 h-3"></i> Logout
+                        <i data-lucide="log-out" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Logout</span>
                     </button>
                 </div>
             </div>
@@ -238,7 +238,7 @@
 
 
     <!-- Main Content -->
-    <main class="max-w-6xl mx-auto p-6 flex-grow w-full">
+    <main class="max-w-6xl mx-auto p-3 sm:p-6 flex-grow w-full">
 
         <!-- Login View -->
         <div id="login-view" class="flex flex-col items-center justify-center min-h-[70vh] animate-slide-up">
@@ -332,26 +332,26 @@
                 </div>
             </header>
 
-            <section class="saved-plates-panel bg-slate-800 p-5 rounded-2xl border border-gray-700 shadow-lg">
+               <section class="saved-plates-panel bg-slate-800 p-5 rounded-2xl border border-gray-700 shadow-lg">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                     <div>
                         <h3 class="font-bold text-white flex items-center gap-2"><i data-lucide="badge" class="w-4 h-4 text-yellow-400"></i> Saved Vehicles</h3>
-                        <p class="text-xs text-gray-400 mt-1">Choose a saved plate to fill Fast Track instantly.</p>
+                        <p class="text-xs text-gray-400 mt-1">Choose a saved plate to fill Quick Book instantly.</p>
                     </div>
                     <button onclick="openSettings()" class="text-xs font-bold text-yellow-400 hover:text-yellow-300">Manage plates</button>
                 </div>
-                <div id="saved-plates-list" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+                <div id="saved-plates-list" class="flex sm:grid overflow-x-auto sm:overflow-x-visible sm:grid-cols-3 gap-3 pb-2 scrollbar-hide w-full py-1"></div>
             </section>
 
-            <!-- NEW: Fast Track Booking Panel -->
+            <!-- NEW: Quick Book Booking Panel -->
             <div
-                class="fast-track-panel bg-slate-800/80 p-6 rounded-3xl border relative overflow-hidden backdrop-blur-md mb-8 mx-4 sm:mx-0">
+                class="quick-book-panel bg-slate-800/80 p-5 sm:p-6 rounded-3xl border relative overflow-hidden backdrop-blur-md mb-8 mx-4 sm:mx-0">
                 <div class="absolute inset-0 bg-gradient-to-r from-yellow-500/10 to-transparent pointer-events-none">
                 </div>
                 <div class="relative z-10 flex flex-col md:flex-row items-center gap-6">
                     <div class="flex-1 w-full">
                         <h3 class="text-xl font-black text-white uppercase tracking-wider mb-1 flex items-center gap-2">
-                            <i data-lucide="zap" class="w-5 h-5 text-yellow-400"></i> Fast Track
+                            <i data-lucide="zap" class="w-5 h-5 text-yellow-400"></i> Quick Book
                         </h3>
                         <p class="text-gray-400 text-xs font-mono">Fill details to auto-assign the best available slot.
                         </p>
@@ -378,50 +378,32 @@
                         </div>
                     </div>
 
-                    <div class="flex-[1.5] w-full relative group">
+                    <div class="flex-[1.5] w-full flex flex-col sm:relative sm:block group gap-3">
                         <input type="text" id="quickVNo" placeholder="ENTER PLATE NO..."
-                            class="w-full bg-slate-950 text-white pl-4 pr-32 py-3.5 rounded-xl border border-gray-700 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 outline-none uppercase font-mono tracking-widest text-sm transition-all shadow-inner placeholder:text-gray-700">
+                            class="w-full bg-slate-950 text-white pl-4 pr-4 sm:pr-32 py-3.5 rounded-xl border border-gray-700 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 outline-none uppercase font-mono tracking-widest text-sm transition-all shadow-inner placeholder:text-gray-700">
                         <button onclick="autoBookSlot()"
-                            class="absolute right-1 top-1 bottom-1 bg-yellow-500 hover:bg-yellow-400 text-black font-black px-6 rounded-lg uppercase tracking-wider text-xs transition-all shadow-lg flex items-center gap-2 shadow-yellow-500/20 group-hover:shadow-yellow-500/40">
+                            class="w-full sm:w-auto sm:absolute sm:right-1 sm:top-1 sm:bottom-1 bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3 sm:py-0 px-6 rounded-xl sm:rounded-lg uppercase tracking-wider text-xs transition-all shadow-lg flex justify-center items-center gap-2 shadow-yellow-500/20 group-hover:shadow-yellow-500/40">
                             Book <i data-lucide="arrow-right" class="w-3 h-3"></i>
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div class="flex items-center gap-4 mb-6 px-4 sm:px-0">
-                <div class="h-px bg-gray-800 flex-1"></div>
-                <span class="text-[10px] text-gray-500 uppercase tracking-widest font-bold font-mono">Or Manual
-                    Selection</span>
-                <div class="h-px bg-gray-800 flex-1"></div>
-            </div>
-
-            <!-- NEW: Search Bar & Export CSV -->
-            <div class="flex items-center gap-4 mb-4 px-4 sm:px-0">
-                <input id="slot-search" type="text" placeholder="Search slot or plate..."
-                    class="flex-1 bg-slate-950 text-white px-4 py-2 rounded-xl border border-gray-700 focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 outline-none"
-                    oninput="handleSearch(event)" />
-                <button onclick="exportCSV()"
-                    class="bg-indigo-600 hover:bg-indigo-500 text-[#fff] font-bold py-2 px-4 rounded-xl transition-colors">
-                    Export CSV
-                </button>
-            </div>
-
             <!-- Building Selector -->
-            <div class="flex items-center justify-between mb-4 px-4 sm:px-0">
-                <div class="flex gap-2">
-                    <button id="user-btn-b1" onclick="selectBuilding('Building 1')" class="px-4 py-2 rounded-xl text-xs font-bold bg-yellow-500 text-black border border-yellow-500 transition-all uppercase tracking-wider">Building 1</button>
-                    <button id="user-btn-b2" class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-950 text-gray-600 border border-gray-800 transition-all uppercase tracking-wider cursor-not-allowed" disabled title="More buildings coming soon">Building 2 (Soon)</button>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 px-4 sm:px-0">
+                <div class="flex gap-2 w-full sm:w-auto">
+                    <button id="user-btn-b1" onclick="selectBuilding('Building 1')" class="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold bg-yellow-500 text-black border border-yellow-500 transition-all uppercase tracking-wider">Building 1</button>
+                    <button id="user-btn-b2" class="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold bg-slate-950 text-gray-600 border border-gray-800 transition-all uppercase tracking-wider cursor-not-allowed" disabled title="More buildings coming soon">Building 2 (Soon)</button>
                 </div>
-                <span class="text-xs font-mono text-gray-400 uppercase tracking-widest bg-slate-950 px-3 py-1.5 rounded-lg border border-gray-800">Active: <strong class="text-white" id="user-active-building">Building 1</strong></span>
+                <span class="text-center sm:text-left text-xs font-mono text-gray-400 uppercase tracking-widest bg-slate-950 px-3 py-2 sm:py-1.5 rounded-lg border border-gray-800">Active: <strong class="text-white" id="user-active-building">Building 1</strong></span>
             </div>
 
-            <div class="bg-slate-800/50 p-6 sm:p-8 rounded-3xl border border-gray-700 relative overflow-hidden">
+            <div class="bg-slate-800/50 p-4 sm:p-8 rounded-3xl border border-gray-700 relative overflow-hidden">
                 <div class="absolute inset-0 opacity-5 pointer-events-none"
                     style="background-image: url('https://www.transparenttextures.com/patterns/asphalt-dark.png');">
                 </div>
                 <div id="user-grid"
-                    class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 sm:gap-6 w-full relative z-10"></div>
+                    class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-6 w-full relative z-10"></div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
