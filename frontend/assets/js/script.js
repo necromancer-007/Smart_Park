@@ -12,7 +12,12 @@ let scanCandidates = [];
 let isLoginInProgress = false;
 
 // Backend API URL (Loaded dynamically from localStorage with fallback)
-const BACKEND_URL = localStorage.getItem('parking_backend_url') || 'https://smart-park-backend-kphl.onrender.com';
+let storedBackend = localStorage.getItem('parking_backend_url');
+if (storedBackend === 'https://smart-park-backend-kphl.onrender.com') {
+    localStorage.removeItem('parking_backend_url');
+    storedBackend = null;
+}
+const BACKEND_URL = storedBackend || 'http://localhost:8000';
 
 let state = {
     currentUser: null,
@@ -49,7 +54,7 @@ function openConfigModal() {
     const current = localStorage.getItem('parking_firebase_config');
     if (current) document.getElementById('config-input').value = current;
     
-    const currentBackend = localStorage.getItem('parking_backend_url') || 'https://smart-park-backend-kphl.onrender.com';
+    const currentBackend = localStorage.getItem('parking_backend_url') || 'http://localhost:8000';
     const backendInput = document.getElementById('backend-url-input');
     if (backendInput) backendInput.value = currentBackend;
 }
