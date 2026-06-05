@@ -32,7 +32,7 @@ def clean_plate_text(text: str) -> str:
 
 def plate_pattern_score(text: str) -> int:
     """Favor realistic registration numbers and reject short OCR noise."""
-    if not 6 <= len(text) <= 12:
+    if not 5 <= len(text) <= 12:
         return -40
 
     score = 10
@@ -105,7 +105,10 @@ def build_ocr_variants(gray):
     denoised = cv2.bilateralFilter(resized, 9, 45, 45)
     sharpened = cv2.filter2D(denoised, -1, np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]))
     otsu = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-    return (sharpened, otsu, cv2.bitwise_not(otsu))
+    adaptive = cv2.adaptiveThreshold(
+        sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 7
+    )
+    return (sharpened, otsu, cv2.bitwise_not(otsu), adaptive)
 
 
 def read_candidate(image, config):

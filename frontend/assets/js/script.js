@@ -1318,6 +1318,12 @@ function stopCamera() {
 async function runDetectionLoop() {
     if (!isDetecting || !stream) return;
 
+    // Skip processing entirely if a scan is currently running to prevent canvas interference and save backend CPU
+    if (window.isScanningLocked) {
+        if (isDetecting) detectionTimeout = setTimeout(runDetectionLoop, 500);
+        return;
+    }
+
     const v = document.getElementById('camera-feed');
     const c = document.getElementById('camera-canvas');
     const overlay = document.getElementById('detection-canvas');
@@ -1394,6 +1400,7 @@ async function runDetectionLoop() {
 
 // OCR Processing via FastAPI Backend
 async function performScan(isAuto = false) {
+    window.isScanningLocked = true;
     const v = document.getElementById('camera-feed');
     const c = document.getElementById('camera-canvas');
     const b = document.getElementById('btn-scan');
@@ -1411,6 +1418,7 @@ async function performScan(isAuto = false) {
     return new Promise((resolve) => {
         c.toBlob(async (blob) => {
             if (!blob) {
+                window.isScanningLocked = false;
                 if (!isAuto) showToast('Failed to capture frame', 'error');
                 if (!isAuto) { b.disabled = false; b.innerText = 'SCAN BASEPLATE'; }
                 return resolve();
@@ -1475,6 +1483,7 @@ async function performScan(isAuto = false) {
                 console.error("Scan Error:", e);
                 if (!isAuto) showToast('Backend Error. Is it running?', 'error');
             } finally {
+                window.isScanningLocked = false;
                 if (!isAuto) { b.disabled = false; b.innerText = 'SCAN BASEPLATE'; }
                 resolve();
             }
