@@ -345,6 +345,7 @@ async function register() {
             const uid = 'local_' + Date.now();
             const profile = {
                 name: name,
+                email: email,
                 role: requestedRole,
                 theme: 'dark',
                 plates: ['', '', '']
@@ -378,6 +379,7 @@ async function register() {
             const credential = await window.createUserWithEmailAndPassword(window.auth, email, pass);
             const profile = {
                 name: name,
+                email: email,
                 role: requestedRole,
                 theme: localStorage.getItem('parking_theme') || 'dark',
                 plates: ['', '', '']
@@ -435,6 +437,7 @@ async function loadUserProfile(user, requestedRole = null) {
         if (userObj) {
             state.profile = {
                 name: userObj.profile.name || 'User',
+                email: userObj.email || userObj.profile.email || user.email || 'N/A',
                 role: userObj.profile.role,
                 theme: userObj.profile.theme || 'dark',
                 plates: [...(userObj.profile.plates || []), '', '', ''].slice(0, 3),
@@ -465,6 +468,7 @@ async function loadUserProfile(user, requestedRole = null) {
     if (!profile?.role && requestedRole === 'driver') {
         profile = {
             name: user.displayName || user.email?.split('@')[0] || 'Driver',
+            email: user.email || 'N/A',
             role: 'driver',
             theme: localStorage.getItem('parking_theme') || 'dark',
             plates: ['', '', ''],
@@ -481,6 +485,7 @@ async function loadUserProfile(user, requestedRole = null) {
 
     state.profile = {
         name: profile.name || user.displayName || user.email?.split('@')[0] || 'User',
+        email: profile.email || user.email || 'N/A',
         role: profile.role,
         theme: profile.theme || localStorage.getItem('parking_theme') || 'dark',
         plates: [...(profile.plates || []), '', '', ''].slice(0, 3),
@@ -848,7 +853,7 @@ function handleSlotClick(slot) {
         else if (slot.status === 'occupied') {
             const parkedByUid = slot.occupiedBy?.parkedByUid;
             if (parkedByUid && parkedByUid !== state.currentUser?.uid) {
-                showToast('Access Denied: Only the driver who booked this slot can checkout.', 'error');
+                showToast('Slot is occupied.', 'info');
             } else {
                 openModal('user-pay', slot);
             }
@@ -860,7 +865,7 @@ function handleSlotClick(slot) {
     }
 }
 
-function openModal(type, data = null) {
+async function openModal(type, data = null) {
     document.getElementById('modal-overlay').classList.remove('hidden');
     const header = (t) => `<div class="bg-slate-950 px-6 py-4 border-b border-gray-800 flex justify-between items-center"><h3 class="font-bold text-lg text-white uppercase tracking-wider">${t}</h3><button onclick="closeModal()" class="text-gray-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button></div>`;
 
@@ -918,8 +923,35 @@ function openModal(type, data = null) {
         if (durationMs < 60000) durationStr = "Just now";
 
         const formattedStart = start.toLocaleString();
-        const driverName = data.occupiedBy.parkedByName || 'OCR Scanning / Auto-Book';
-        const driverEmail = data.occupiedBy.parkedByEmail || 'N/A';
+        
+        // Fetch registered driver profile details dynamically
+        let driverName = data.occupiedBy.parkedByName || 'OCR Scanning / Auto-Book';
+        let driverEmail = data.occupiedBy.parkedByEmail || 'N/A';
+        const uid = data.occupiedBy.parkedByUid;
+        
+        if (uid && uid !== 'anonymous' && uid !== 'admin_override') {
+            if (window.isOffline) {
+                const users = getLocalUsers();
+                const userObj = Object.values(users).find(u => u.uid === uid);
+                if (userObj) {
+                    driverName = userObj.profile.name || driverName;
+                    driverEmail = userObj.email || driverEmail;
+                }
+            } else if (window.db && window.getDoc && window.doc) {
+                try {
+                    const userDocRef = window.doc(window.db, 'users', uid);
+                    const userSnap = await window.getDoc(userDocRef);
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        driverName = userData.name || driverName;
+                        driverEmail = userData.email || driverEmail;
+                    }
+                } catch (e) {
+                    console.error("Failed to load driver profile in admin-details modal", e);
+                }
+            }
+        }
+        
         const isVerified = !!data.occupiedBy.verified;
 
         html = `${header(`Slot ${String(data.id).padStart(2, '0')} Details`)}
@@ -994,7 +1026,7 @@ function autoBookSlot() {
         verified: false,
         parkedByUid: state.currentUser?.uid || 'anonymous',
         parkedByName: state.profile?.name || state.currentUser?.displayName || state.currentUser?.email?.split('@')[0] || 'Quick Driver',
-        parkedByEmail: state.currentUser?.email || 'N/A'
+        parkedByEmail: state.profile?.email || state.currentUser?.email || 'N/A'
     });
 
     addLog(`AUTO-BOOK: Slot ${availableSlot.id} for ${vNo}`, 'user', { action: 'book', slotId: availableSlot.id, vehicleNo: vNo, vehicleType: type, building: availableSlot.building });
@@ -1019,7 +1051,7 @@ function userPark() {
         verified: false,
         parkedByUid: state.currentUser?.uid || 'anonymous',
         parkedByName: state.profile?.name || state.currentUser?.displayName || state.currentUser?.email?.split('@')[0] || 'Driver',
-        parkedByEmail: state.currentUser?.email || 'N/A'
+        parkedByEmail: state.profile?.email || state.currentUser?.email || 'N/A'
     });
     addLog(`PARK: ${vNo}`, 'user', { action: 'book', slotId: state.selectedSlot, vehicleNo: vNo, vehicleType: type, building });
     closeModal();
