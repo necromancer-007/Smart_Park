@@ -1738,13 +1738,13 @@ async function checkBackendStatus() {
         }
 
         const data = await res.json();
-        if (data.tesseract_version) {
+        if (data.tesseract_version || data.paddleocr_version) {
             badge.className = "ml-2 px-2 py-0.5 rounded text-[10px] font-mono bg-green-950/40 text-green-400 border border-green-500/20";
-            badge.innerText = "OCR API Online";
+            badge.innerText = data.paddleocr_version ? `OCR API ONLINE (${data.paddleocr_version})` : "OCR API ONLINE";
         } else {
             badge.className = "ml-2 px-2 py-0.5 rounded text-[10px] font-mono bg-yellow-950/40 text-yellow-400 border border-yellow-500/20";
-            badge.innerText = "OCR API Online (Tesseract Missing)";
-            showToast("Tesseract is not installed on the backend!", "warning");
+            badge.innerText = "OCR API ONLINE (ENGINE MISSING)";
+            showToast("No valid OCR engine is configured on the backend!", "warning");
         }
     } catch (err) {
         badge.className = "ml-2 px-2 py-0.5 rounded text-[10px] font-mono bg-red-950/40 text-red-400 border border-red-500/20";

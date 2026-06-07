@@ -22,25 +22,24 @@ def read_root():
 @app.get("/debug")
 def debug_info():
     import platform
-    import pytesseract
-    import shutil
-    tesseract_in_path = shutil.which("tesseract")
-    tesseract_cmd_val = pytesseract.pytesseract.tesseract_cmd
+    import paddle
+    import paddleocr
     
     version = None
+    paddle_version = None
     error = None
     try:
-        version = str(pytesseract.get_tesseract_version())
+        version = paddleocr.__version__
+        paddle_version = paddle.__version__
     except Exception as e:
         error = str(e)
         
     return {
         "platform": platform.system(),
         "platform_release": platform.release(),
-        "tesseract_in_path": tesseract_in_path,
-        "tesseract_cmd_configured": tesseract_cmd_val,
-        "tesseract_version": version,
-        "tesseract_error": error
+        "paddleocr_version": version,
+        "paddle_version": paddle_version,
+        "error": error
     }
 
 @app.post("/scan")

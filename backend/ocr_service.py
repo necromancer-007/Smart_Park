@@ -4,26 +4,10 @@ import re
 
 import cv2
 import numpy as np
-import pytesseract
-from pytesseract import Output
+from paddleocr import PaddleOCR
 
-
-if platform.system() == "Darwin":
-    for path in ("/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract"):
-        if os.path.exists(path):
-            pytesseract.pytesseract.tesseract_cmd = path
-            break
-elif platform.system() == "Linux":
-    for path in ("/usr/bin/tesseract", "/usr/local/bin/tesseract"):
-        if os.path.exists(path):
-            pytesseract.pytesseract.tesseract_cmd = path
-            break
-
-
-PLATE_CONFIGS = (
-    "--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-    "--oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-)
+# Initialize PaddleOCR once at startup
+ocr = PaddleOCR(use_angle_cls=False, lang='en')
 
 
 def clean_plate_text(text: str) -> str:
@@ -120,41 +104,17 @@ def detect_bbox(img):
     return candidates[0] if candidates else None
 
 
-def build_ocr_variants(gray):
-    target_width = 700
-    scale = target_width / float(max(gray.shape[1], 1))
-    resized = cv2.resize(gray, (target_width, max(80, int(gray.shape[0] * scale))), interpolation=cv2.INTER_CUBIC)
-    denoised = cv2.bilateralFilter(resized, 9, 45, 45)
-    sharpened = cv2.filter2D(denoised, -1, np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]))
-    otsu = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-    adaptive = cv2.adaptiveThreshold(
-        sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 7
-    )
-    return (sharpened, otsu, cv2.bitwise_not(otsu), adaptive)
-
-
-def read_candidate(image, config):
+def read_candidate(image):
     try:
-        data = pytesseract.image_to_data(image, config=config, output_type=Output.DICT)
+        # PaddleOCR predict runs detection & recognition on the crop
+        result = ocr.predict(image)
+        if result and result[0] and result[0].get('rec_texts'):
+            text = result[0]['rec_texts'][0]
+            confidence = result[0]['rec_scores'][0]
+            return clean_plate_text(text), confidence * 100
     except Exception as error:
-        print(f"Tesseract OCR error in read_candidate: {error}")
-        return "", 0
-
-    words = []
-    confidences = []
-    for raw_text, raw_confidence in zip(data["text"], data["conf"]):
-        text = clean_plate_text(raw_text)
-        try:
-            confidence = float(raw_confidence)
-        except (TypeError, ValueError):
-            confidence = -1
-        if text and confidence >= 0:
-            words.append(text)
-            confidences.append(confidence)
-
-    candidate = clean_plate_text("".join(words))
-    confidence = sum(confidences) / len(confidences) if confidences else 0
-    return candidate, confidence
+        print(f"PaddleOCR error in read_candidate: {error}")
+    return "", 0
 
 
 def process_image(image_bytes: bytes) -> dict:
@@ -177,20 +137,16 @@ def process_image(image_bytes: bytes) -> dict:
             y1 = max(0, bbox["y"] - padding_y)
             x2 = min(image.shape[1], bbox["x"] + bbox["w"] + padding_x)
             y2 = min(image.shape[0], bbox["y"] + bbox["h"] + padding_y)
-            roi = gray[y1:y2, x1:x2]
+            roi = image[y1:y2, x1:x2]
             
-            roi_variants = build_ocr_variants(roi)
-            # Variants to try: 
-            # 0: sharpened (PSM 7), 1: otsu (PSM 7), 3: adaptive (PSM 7), 0: sharpened (PSM 8)
-            variants_to_try = [
-                (roi_variants[3], PLATE_CONFIGS[0]), # adaptive PSM 7
-                (roi_variants[0], PLATE_CONFIGS[0]), # sharpened PSM 7
-                (roi_variants[1], PLATE_CONFIGS[0]), # otsu PSM 7
-                (roi_variants[0], PLATE_CONFIGS[1]), # sharpened PSM 8
-            ]
-            
-            for var, config in variants_to_try:
-                candidate, confidence = read_candidate(var, config)
+            # Simple pre-processing: resize slightly to improve character definition
+            if roi.shape[0] > 0 and roi.shape[1] > 0:
+                h, w = roi.shape[:2]
+                scale = 64.0 / float(h)
+                roi_resized = cv2.resize(roi, (int(w * scale), 64), interpolation=cv2.INTER_CUBIC)
+                
+                # Single-pass OCR on cropped ROI
+                candidate, confidence = read_candidate(roi_resized)
                 if candidate:
                     score = plate_pattern_score(candidate)
                     scored_candidates.append((confidence + score, confidence, candidate, bbox))
@@ -204,12 +160,10 @@ def process_image(image_bytes: bytes) -> dict:
                         }
 
         # 3. If ROI OCR failed to find a valid license plate pattern, run on the full image
-        # Check if we already have a decent candidate from ROIs before running full image
         best_roi_candidate = None
         if scored_candidates:
             best_roi_candidate = max(scored_candidates, key=lambda x: x[0])
             
-        # Only run full image OCR if we don't have a positive pattern score candidate from ROI
         run_full_image = True
         if best_roi_candidate:
             _, confidence, text, bbox = best_roi_candidate
@@ -217,26 +171,31 @@ def process_image(image_bytes: bytes) -> dict:
                 run_full_image = False
 
         if run_full_image:
-            full_variants = build_ocr_variants(gray)
-            # Use only Adaptive and Sharpened variants for full image (much faster and covers 95% of cases)
-            full_variants_to_try = [
-                (full_variants[3], PLATE_CONFIGS[0]), # adaptive PSM 7
-                (full_variants[0], PLATE_CONFIGS[0]), # sharpened PSM 7
-            ]
-            for var, config in full_variants_to_try:
-                candidate, confidence = read_candidate(var, config)
-                if candidate:
-                    score = plate_pattern_score(candidate)
-                    scored_candidates.append((confidence + score, confidence, candidate, None))
-                    
-                    if is_perfect_plate(candidate, confidence):
-                        # Use the best bbox from candidates as fallback visual bbox if available
-                        fallback_bbox = bboxes[0] if bboxes else None
-                        return {
-                            "text": candidate,
-                            "bbox": fallback_bbox,
-                            "confidence": round(confidence, 1)
-                        }
+            try:
+                # Runs full image PaddleOCR
+                result = ocr.predict(image)
+                if result and result[0] and result[0].get('rec_texts'):
+                    texts = result[0]['rec_texts']
+                    scores = result[0]['rec_scores']
+                    boxes = result[0].get('rec_boxes', [None] * len(texts))
+                    for text, confidence, bbox_coords in zip(texts, scores, boxes):
+                        text = clean_plate_text(text)
+                        if text:
+                            score = plate_pattern_score(text)
+                            bbox = None
+                            if bbox_coords is not None and len(bbox_coords) >= 4:
+                                x1, y1, x2, y2 = bbox_coords[0], bbox_coords[1], bbox_coords[2], bbox_coords[3]
+                                bbox = {"x": int(x1), "y": int(y1), "w": int(x2 - x1), "h": int(y2 - y1)}
+                            
+                            scored_candidates.append((confidence * 100 + score, confidence * 100, text, bbox))
+                            if is_perfect_plate(text, confidence * 100):
+                                return {
+                                    "text": text,
+                                    "bbox": bbox,
+                                    "confidence": round(confidence * 100, 1)
+                                }
+            except Exception as error:
+                print(f"Full image OCR error: {error}")
 
         # 4. Return the best overall candidate
         if not scored_candidates:
@@ -253,7 +212,6 @@ def process_image(image_bytes: bytes) -> dict:
         return {"text": text, "bbox": fallback_bbox, "confidence": round(confidence, 1)}
     except Exception as error:
         print(f"OCR pipeline error: {error}")
-        # Return fallback bbox if we can
         try:
             if bboxes:
                 return {"text": "", "bbox": bboxes[0], "confidence": 0}
