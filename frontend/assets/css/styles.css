@@ -169,6 +169,7 @@ button:active {
         rgb(var(--color-slate-800)) 100%
     ) !important;
     background-size: 200% 100% !important;
+    border-color: rgba(234, 179, 8, 0.8) !important;
     animation: yellow-shimmer 3.5s infinite linear, yellow-glow 2s infinite ease-in-out !important;
 }
 
@@ -465,6 +466,7 @@ body.theme-light #activity-log {
         rgba(30, 41, 59, 0.3) 100%
     ) !important;
     background-size: 200% 100% !important;
+    border-color: rgba(234, 179, 8, 0.8) !important;
     animation: yellow-shimmer 3.5s infinite linear, yellow-glow 2s infinite ease-in-out !important;
 }
 

@@ -1702,27 +1702,27 @@ async function performScan(isAuto = false) {
                     // Log success to the system log
                     addLog(`SCAN PARSED: ${result.plate}`, 'system', { action: 'scan', plate: result.plate });
 
+                    let matchFound = false;
+                    for (let slot of state.slots) {
+                        if (slot.status === 'occupied' && !slot.occupiedBy.verified) {
+                            let recNo = slot.occupiedBy.vehicleNo.toUpperCase().replace(/\s/g, '');
+                            if (result.plate.includes(recNo) || recNo.includes(result.plate)) {
+                                updateSlot(slot.id, 'occupied', { ...slot.occupiedBy, verified: true });
+                                matchFound = true;
+                                break;
+                            }
+                        }
+                    }
+
                     if (result.database_updated) {
                         showToast('MATCHED & VERIFIED', 'success');
                         addLog(`VERIFIED CLOUD: ${result.plate}`, 'success', { action: 'verify', plate: result.plate });
                     } else {
                         // Fallback for offline mode or missing Firebase backend config
                         if (ocrConfig.autoVerify) {
-                            let matchFound = false;
-                            for (let slot of state.slots) {
-                                if (slot.status === 'occupied' && !slot.occupiedBy.verified) {
-                                    let recNo = slot.occupiedBy.vehicleNo.toUpperCase().replace(/\s/g, '');
-                                    if (result.plate.includes(recNo) || recNo.includes(result.plate)) {
-                                        updateSlot(slot.id, 'occupied', { ...slot.occupiedBy, verified: true });
-                                        addLog(`VERIFIED: ${slot.occupiedBy.vehicleNo} (Offline fallback)`, 'success', { action: 'verify', plate: slot.occupiedBy.vehicleNo, slotId: slot.id, building: slot.building });
-                                        matchFound = true;
-                                        break;
-                                    }
-                                }
-                            }
-
                             if (matchFound) {
                                 showToast('MATCHED & VERIFIED', 'success');
+                                addLog(`VERIFIED: ${result.plate} (Offline fallback)`, 'success', { action: 'verify', plate: result.plate });
                             } else {
                                 showToast(`Detected: ${result.plate} (No Unverified Match)`, 'info');
                             }
