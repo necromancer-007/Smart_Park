@@ -853,7 +853,7 @@ function handleSlotClick(slot) {
         else if (slot.status === 'occupied') {
             const parkedByUid = slot.occupiedBy?.parkedByUid;
             if (parkedByUid && parkedByUid !== state.currentUser?.uid) {
-                showToast('Slot is occupied.', 'info');
+                openModal('user-occupied-info', slot);
             } else {
                 openModal('user-pay', slot);
             }
@@ -879,8 +879,72 @@ async function openModal(type, data = null) {
                     <label class="cursor-pointer"><input type="radio" name="vType" value="bike" class="peer sr-only" ${isBike ? 'checked' : ''}><div class="p-3 border border-gray-700 bg-slate-800 rounded-xl text-center peer-checked:border-yellow-500 peer-checked:text-yellow-400"><i data-lucide="bike" class="w-6 h-6 mx-auto mb-1"></i><span class="text-xs font-bold">Bike (₹${RATES.bike}/hr)</span></div></label>
                 </div>
                 <input type="text" id="vNo" placeholder="PLATE NO (AP 05 AB 1234)" class="w-full bg-slate-950 text-white px-4 py-3 rounded-xl border border-gray-700 uppercase font-mono outline-none">
+                <input type="number" id="estDuration" placeholder="ESTIMATED STAY (MINUTES)" min="1" class="w-full bg-slate-950 text-white px-4 py-3 rounded-xl border border-gray-700 outline-none font-mono text-sm">
                 <button onclick="userPark()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3 rounded-xl uppercase mt-2">Confirm</button>
             </div>`;
+    } else if (type === 'user-occupied-info') {
+        const start = new Date(data.occupiedBy.startTime);
+        const estMinutes = parseInt(data.occupiedBy.estDuration) || 0;
+        const endTime = new Date(start.getTime() + estMinutes * 60000);
+        
+        const getRemainingText = () => {
+            const now = new Date();
+            const diffMs = endTime - now;
+            if (diffMs <= 0) {
+                return `<span class="text-red-500 font-bold uppercase animate-pulse">Overdue / Vacating Soon</span>`;
+            }
+            const diffSecs = Math.floor(diffMs / 1000);
+            const hrs = Math.floor(diffSecs / 3600);
+            const mins = Math.floor((diffSecs % 3600) / 60);
+            const secs = diffSecs % 60;
+            
+            let str = "";
+            if (hrs > 0) str += `${hrs}h `;
+            if (mins > 0 || hrs > 0) str += `${mins}m `;
+            str += `${secs}s`;
+            return `<span class="text-yellow-400 font-bold font-mono">${str}</span>`;
+        };
+
+        html = `${header(`Slot ${String(data.id).padStart(2, '0')} Occupied`)}
+            <div class="p-6 space-y-6 text-center">
+                <div class="bg-slate-950 p-6 rounded-2xl border border-gray-700 relative overflow-hidden">
+                    <div class="absolute inset-0 bg-red-500/5 pointer-events-none"></div>
+                    <i data-lucide="clock" class="w-12 h-12 text-yellow-500 mx-auto mb-3 animate-pulse"></i>
+                    <p class="text-gray-400 text-[10px] font-bold uppercase tracking-wider font-mono">Estimated Time To Vacant</p>
+                    <div id="modal-countdown-timer" class="text-3xl font-black text-white font-mono mt-2">${getRemainingText()}</div>
+                </div>
+                
+                <div class="space-y-3 font-mono text-xs text-white text-left bg-slate-900/50 p-4 rounded-xl border border-gray-800">
+                    <div class="flex justify-between items-center py-1.5 border-b border-gray-800">
+                        <span class="text-gray-400 font-bold">Estimated Stay</span>
+                        <span class="text-white font-bold">${estMinutes} minutes</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5 border-b border-gray-800">
+                        <span class="text-gray-400 font-bold">Start Time</span>
+                        <span class="text-white">${start.toLocaleTimeString()}</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5">
+                        <span class="text-gray-400 font-bold">Estimated End Time</span>
+                        <span class="text-white">${endTime.toLocaleTimeString()}</span>
+                    </div>
+                </div>
+
+                <button onclick="closeModal()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3 rounded-xl uppercase tracking-wider text-xs transition-all shadow-lg shadow-yellow-500/10">
+                    Close
+                </button>
+            </div>`;
+
+        // Start countdown interval
+        if (window.modalInterval) clearInterval(window.modalInterval);
+        window.modalInterval = setInterval(() => {
+            const el = document.getElementById('modal-countdown-timer');
+            if (el) {
+                el.innerHTML = getRemainingText();
+            } else {
+                clearInterval(window.modalInterval);
+                window.modalInterval = null;
+            }
+        }, 1000);
     } else if (type === 'user-pay') {
         const total = Math.max(1, Math.ceil((new Date() - new Date(data.occupiedBy.startTime)) / 36e5)) * (data.occupiedBy.type === 'car' ? RATES.car : RATES.bike);
         const prefPay = state.profile.prefPayment || 'UPI';
@@ -984,6 +1048,24 @@ async function openModal(type, data = null) {
                         <span class="text-white">${formattedStart}</span>
                     </div>
                     <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
+                        <span class="text-gray-400 font-bold flex items-center gap-1"><i data-lucide="timer" class="w-3.5 h-3.5 text-yellow-500"></i> ESTIMATED STAY</span>
+                        <span class="text-white font-bold">${data.occupiedBy.estDuration || 'N/A'} mins</span>
+                    </div>
+                    <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
+                        <span class="text-gray-400 font-bold flex items-center gap-1"><i data-lucide="hourglass" class="w-3.5 h-3.5 text-yellow-500"></i> TIME REMAINING</span>
+                        <span class="text-yellow-400 font-bold">
+                            ${(() => {
+                                const estM = parseInt(data.occupiedBy.estDuration) || 0;
+                                if (!estM) return 'N/A';
+                                const endT = new Date(start.getTime() + estM * 60000);
+                                const remMs = endT - new Date();
+                                if (remMs <= 0) return 'Overdue';
+                                const remM = Math.floor(remMs / 60000);
+                                return `${remM} mins`;
+                            })()}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
                         <span class="text-gray-400 font-bold flex items-center gap-1"><i data-lucide="timer" class="w-3.5 h-3.5 text-yellow-500"></i> DURATION</span>
                         <span class="text-yellow-400 font-bold">${durationStr}</span>
                     </div>
@@ -1003,12 +1085,24 @@ async function openModal(type, data = null) {
     if (window.lucide) lucide.createIcons();
 }
 
-function closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); }
+function closeModal() {
+    if (window.modalInterval) {
+        clearInterval(window.modalInterval);
+        window.modalInterval = null;
+    }
+    document.getElementById('modal-overlay').classList.add('hidden');
+}
 
 // Core Actions
 function autoBookSlot() {
     const vNo = normalizePlate(document.getElementById('quickVNo').value);
     if (!vNo) return showToast('Please enter a License Plate', 'error');
+
+    const estDurationVal = document.getElementById('quickEstDuration').value;
+    const estDuration = parseInt(estDurationVal);
+    if (!estDurationVal || isNaN(estDuration) || estDuration <= 0) {
+        return showToast('Please enter estimated duration in minutes', 'error');
+    }
 
     // Find first available slot in the current building
     const availableSlot = state.slots.find(s => s.status === 'available' && s.building === state.currentBuilding);
@@ -1026,13 +1120,15 @@ function autoBookSlot() {
         verified: false,
         parkedByUid: state.currentUser?.uid || 'anonymous',
         parkedByName: state.profile?.name || state.currentUser?.displayName || state.currentUser?.email?.split('@')[0] || 'Quick Driver',
-        parkedByEmail: state.profile?.email || state.currentUser?.email || 'N/A'
+        parkedByEmail: state.profile?.email || state.currentUser?.email || 'N/A',
+        estDuration: estDuration
     });
 
-    addLog(`AUTO-BOOK: Slot ${availableSlot.id} for ${vNo}`, 'user', { action: 'book', slotId: availableSlot.id, vehicleNo: vNo, vehicleType: type, building: availableSlot.building });
+    addLog(`AUTO-BOOK: Slot ${availableSlot.id} for ${vNo} (${estDuration} mins)`, 'user', { action: 'book', slotId: availableSlot.id, vehicleNo: vNo, vehicleType: type, building: availableSlot.building, estDuration });
 
-    // Clear the input
+    // Clear the inputs
     document.getElementById('quickVNo').value = '';
+    document.getElementById('quickEstDuration').value = '';
 
     showToast(`Assigned Slot ${String(availableSlot.id).padStart(2, '0')} successfully!`, 'success');
 }
@@ -1041,6 +1137,13 @@ function userPark() {
     const vNo = normalizePlate(document.getElementById('vNo').value);
     if (!vNo) return showToast('Plate Required', 'error');
     const type = document.querySelector('input[name="vType"]:checked').value;
+    
+    const estDurationVal = document.getElementById('estDuration').value;
+    const estDuration = parseInt(estDurationVal);
+    if (!estDurationVal || isNaN(estDuration) || estDuration <= 0) {
+        return showToast('Estimated stay duration required', 'error');
+    }
+
     const slot = state.slots.find(s => s.id === state.selectedSlot);
     const building = slot?.building || 'Building 1';
     
@@ -1051,9 +1154,10 @@ function userPark() {
         verified: false,
         parkedByUid: state.currentUser?.uid || 'anonymous',
         parkedByName: state.profile?.name || state.currentUser?.displayName || state.currentUser?.email?.split('@')[0] || 'Driver',
-        parkedByEmail: state.profile?.email || state.currentUser?.email || 'N/A'
+        parkedByEmail: state.profile?.email || state.currentUser?.email || 'N/A',
+        estDuration: estDuration
     });
-    addLog(`PARK: ${vNo}`, 'user', { action: 'book', slotId: state.selectedSlot, vehicleNo: vNo, vehicleType: type, building });
+    addLog(`PARK: ${vNo} (${estDuration} mins)`, 'user', { action: 'book', slotId: state.selectedSlot, vehicleNo: vNo, vehicleType: type, building, estDuration });
     closeModal();
     showToast('Booked', 'success');
 }
@@ -1094,7 +1198,8 @@ function confirmEmergencyBook() {
         verified: true,
         parkedByUid: state.currentUser?.uid || 'admin_override',
         parkedByName: 'System Override (' + (state.profile?.name || state.currentUser?.email?.split('@')[0] || 'Admin') + ')',
-        parkedByEmail: state.currentUser?.email || 'admin@smartpark.com'
+        parkedByEmail: state.currentUser?.email || 'admin@smartpark.com',
+        estDuration: 60
     });
     addLog(`OVERRIDE: Slot ${state.selectedSlot} for ${vNo}`, 'alert', { action: 'override', slotId: state.selectedSlot, vehicleNo: vNo, vehicleType: 'car', building });
     closeModal();
